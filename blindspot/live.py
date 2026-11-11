@@ -2,7 +2,9 @@
 from __future__ import annotations
 import time
 import cv2
+from dataclasses import replace
 from blindspot.engine import FrameAnalysis, analyse_frame
+from blindspot.temporal import frame_change
 
 
 def sample_stream(source: int | str, duration_seconds: float = 15.0,
@@ -21,6 +23,7 @@ def sample_stream(source: int | str, duration_seconds: float = 15.0,
     results: list[FrameAnalysis] = []
     started = time.monotonic()
     next_sample = started
+    previous_sample = None
     try:
         while time.monotonic() - started < duration_seconds and len(results) < max_samples:
             ok, frame = capture.read()
@@ -31,7 +34,10 @@ def sample_stream(source: int | str, duration_seconds: float = 15.0,
             if now >= next_sample:
                 result = analyse_frame(frame, grid_size)
                 elapsed = now - started
-                results.append(FrameAnalysis(elapsed, result.metrics, result.confidence_map))
+                change = 0.0 if previous_sample is None else frame_change(previous_sample, frame)
+                metrics = replace(result.metrics, temporal_change=change)
+                results.append(FrameAnalysis(elapsed, metrics, result.confidence_map))
+                previous_sample = frame.copy()
                 next_sample = now + sample_every_seconds
     finally:
         capture.release()
