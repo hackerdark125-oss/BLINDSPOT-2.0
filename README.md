@@ -1,33 +1,54 @@
 # BLINDSPOT 2.0
 ### Visual Uncertainty Intelligence System
 
-BlindSpot 2.0 is an experimental AI and computer vision project designed to help autonomous inspection systems understand not only what they can see, but also what they cannot see.
+BlindSpot 2.0 is an experimental computer-vision system that measures the quality and coverage of visual observations. Its central question is: **where is the visual evidence weak, missing, or unreliable?**
 
-Unlike conventional vision systems that focus primarily on object detection, BlindSpot explores visual coverage, observation confidence, unknown regions, and outdated information.
+The first milestone analyses real video files from up to four camera viewpoints. It samples frames, estimates local image quality, and builds per-view confidence maps. Image quality is only a proxy for observation confidence, not proof that a scene area has been understood.
 
-The goal is to develop an intelligent system that can identify gaps in visual information and recommend areas that require further inspection.
+## Current features
+- Analyse up to four real camera videos
+- OpenCV frame sampling
+- Local confidence maps
+- Blur/sharpness, brightness, contrast, and edge-detail measurements
+- Per-camera uncertainty summaries
+- Low-confidence regions prioritised for review
+- Interactive Streamlit dashboard
+- Unit tests for the analysis engine
 
-### Core Features
-- Multi-directional camera simulation
-- Visual coverage mapping
-- Observation confidence estimation
-- Unknown-area identification
-- Stale observation detection
-- Inspection priority recommendations
-- Interactive visual intelligence dashboard
+## Run on Windows
+```bat
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install -r requirements.txt
+streamlit run app.py
+```
+Open the local URL printed by Streamlit (usually http://localhost:8501).
 
-### Technology Stack
-- Python
-- OpenCV
-- NumPy
-- Streamlit
-- Plotly
-- Computer Vision
+## Run tests
+```bat
+python -m pytest -q
+```
 
-### Project Vision
-To develop a lightweight visual intelligence system that makes autonomous inspection more aware of its own limitations.
+## How the confidence map works
+Each sampled frame is divided into a configurable grid. Every cell receives a heuristic score based on luminance, contrast, Laplacian sharpness, and edge density. Scores range from 0 to 100; low-scoring cells are highlighted for review. This is an explainable baseline, not a trained AI model or calibrated probability.
 
-### Development Status
-Early-stage research and development. Currently includes a simulated four-camera environment and an interactive coverage dashboard. Real camera integration, visual localization, and validated uncertainty estimation are future development goals.
+## Roadmap
+- [x] Real video ingestion and frame sampling
+- [x] Explainable local visual-quality map
+- [ ] Live webcam / RTSP capture
+- [ ] Camera calibration and time synchronisation
+- [ ] Motion-aware stale-observation tracking
+- [ ] Geometric coverage mapping using camera pose / visual localisation
+- [ ] Validated uncertainty model and benchmark dataset
 
-**Note:** This is currently a software simulation and does not control a physical drone.
+## Limitations and safety
+- The current map measures image quality, not physical-world visibility or 3D coverage.
+- Camera views are analysed independently; no camera calibration or cross-camera geometry is inferred.
+- Results are decision-support signals only. Do not use this prototype for flight control, navigation, targeting, or safety-critical inspection.
+- No claim of novelty or operational readiness is made.
+
+## Tech stack
+Python · OpenCV · NumPy · Pandas · Plotly · Streamlit · Pytest
+
+## License
+MIT
