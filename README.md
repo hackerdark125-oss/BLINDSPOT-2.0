@@ -13,6 +13,7 @@ It is a research prototype, not a drone autopilot, obstacle-avoidance system, ca
 - Per-grid-cell heuristic image-quality scores
 - Brightness, contrast, Laplacian sharpness, and edge-detail measurements
 - Confidence/uncertainty trend charts and a heatmap
+- Consecutive-frame pixel-change signal (scene change only; not object tracking)
 - Ranked low-scoring image cells for manual review
 - Optional bounded live capture from the host computer webcam
 - Optional RTSP/HTTP stream capture from a reachable camera
