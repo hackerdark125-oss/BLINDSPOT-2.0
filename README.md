@@ -1,54 +1,96 @@
-# BLINDSPOT 2.0
-### Visual Uncertainty Intelligence System
+# BLINDSPOT
 
-BlindSpot 2.0 is an experimental computer-vision system that measures the quality and coverage of visual observations. Its central question is: **where is the visual evidence weak, missing, or unreliable?**
+### Drone Visual-Awareness Research Prototype
 
-The first milestone analyses real video files from up to four camera viewpoints. It samples frames, estimates local image quality, and builds per-view confidence maps. Image quality is only a proxy for observation confidence, not proof that a scene area has been understood.
+BLINDSPOT analyses recorded video and optional live webcam/RTSP streams to highlight **weak image-quality regions** that may deserve operator review.
+
+It is a research prototype, not a drone autopilot, obstacle-avoidance system, calibrated visibility estimator, or certified safety tool.
 
 ## Current features
-- Analyse up to four real camera videos
-- OpenCV frame sampling
-- Local confidence maps
-- Blur/sharpness, brightness, contrast, and edge-detail measurements
-- Per-camera uncertainty summaries
-- Low-confidence regions prioritised for review
-- Interactive Streamlit dashboard
-- Unit tests for the analysis engine
+
+- Upload and analyse up to four video files (MP4, AVI, MOV, MKV)
+- Sample video frames at a configurable interval
+- Per-grid-cell heuristic image-quality scores
+- Brightness, contrast, Laplacian sharpness, and edge-detail measurements
+- Confidence/uncertainty trend charts and a heatmap
+- Ranked low-scoring image cells for manual review
+- Optional bounded live capture from the host computer webcam
+- Optional RTSP/HTTP stream capture from a reachable camera
+- Unit tests for image analysis, prioritisation, and temporal frame-change utility
 
 ## Run on Windows
+
+Python 3.10 or 3.11 is recommended for broad binary-wheel compatibility.
+
 ```bat
-python -m venv .venv
+git clone https://github.com/hackerdark125-oss/BLINDSPOT-2.0.git
+cd BLINDSPOT-2.0
+py -3.11 -m venv .venv
 .venv\Scripts\activate
-python -m pip install -r requirements.txt
+python -m pip install --upgrade pip
+pip install -r requirements.txt
 streamlit run app.py
 ```
-Open the local URL printed by Streamlit (usually http://localhost:8501).
+
+If Python 3.11 is not installed, install it from python.org and retry. Open the local URL printed by Streamlit, usually http://localhost:8501.
 
 ## Run tests
+
 ```bat
 python -m pytest -q
 ```
 
-## How the confidence map works
-Each sampled frame is divided into a configurable grid. Every cell receives a heuristic score based on luminance, contrast, Laplacian sharpness, and edge density. Scores range from 0 to 100; low-scoring cells are highlighted for review. This is an explainable baseline, not a trained AI model or calibrated probability.
+## Use recorded drone footage
+
+1. Record a short video from a drone camera, or use phone footage as a test input.
+2. Transfer the MP4/MOV file to the computer running BLINDSPOT.
+3. Open the **Recorded video** tab and upload it.
+4. Review the trend chart, latest heatmap, and lowest-scoring grid cells.
+
+Phone footage simulates camera input; it is not a live connection to a drone.
+
+## Use a live camera
+
+Open **Live camera / RTSP**:
+- **Host computer webcam** reads a webcam connected to the computer running Streamlit.
+- **RTSP / HTTP stream** accepts a camera stream URL reachable from that computer.
+
+For a phone camera, an IP-camera app may expose an RTSP/HTTP stream on the same trusted Wi-Fi network. Configure the app and network yourself; stream URL formats vary by app. Do not expose an unauthenticated camera stream publicly. Live capture is bounded by the selected duration.
+
+## How the score works
+
+Each sampled frame is divided into a configurable grid. Each cell receives a heuristic score based on exposure, local contrast, Laplacian sharpness, and edge density. Scores are scaled to 0–100. The dashboard reports the average and highlights the lowest-scoring cells.
+
+**Confidence is a label for this image-quality heuristic only.** It is not a calibrated probability that an obstacle is visible, detected, or safely avoidable.
+
+## What is not implemented
+
+- Object detection for trees, wires, buildings, people, or other obstacles
+- Physical blind-spot inference or 3D scene/coverage reconstruction
+- Camera calibration, pose estimation, or multi-camera geometry
+- Drone telemetry, flight-controller integration, or autonomous control
+- Validated collision-risk prediction or safety guarantees
 
 ## Roadmap
-- [x] Real video ingestion and frame sampling
-- [x] Explainable local visual-quality map
-- [ ] Live webcam / RTSP capture
-- [ ] Camera calibration and time synchronisation
-- [ ] Motion-aware stale-observation tracking
-- [ ] Geometric coverage mapping using camera pose / visual localisation
-- [ ] Validated uncertainty model and benchmark dataset
 
-## Limitations and safety
-- The current map measures image quality, not physical-world visibility or 3D coverage.
-- Camera views are analysed independently; no camera calibration or cross-camera geometry is inferred.
-- Results are decision-support signals only. Do not use this prototype for flight control, navigation, targeting, or safety-critical inspection.
-- No claim of novelty or operational readiness is made.
+- [x] Recorded video ingestion and frame sampling
+- [x] Explainable local image-quality heatmap
+- [x] Per-frame trend dashboard and weak-cell prioritisation
+- [x] Bounded webcam / RTSP sampling
+- [ ] Validated motion-aware visual tracking
+- [ ] Camera calibration and pose-aware 3D coverage
+- [ ] Evaluated object-detection module with documented model and dataset
+- [ ] Multi-camera synchronisation and geometric fusion
+- [ ] Benchmark dataset, metrics, and field validation
 
 ## Tech stack
+
 Python · OpenCV · NumPy · Pandas · Plotly · Streamlit · Pytest
 
+## Safety
+
+Use only as an experimental visual-review aid. Do not rely on it for flight control, navigation, obstacle avoidance, targeting, or safety-critical decisions. Test in a controlled environment and keep a human operator responsible for all flight decisions.
+
 ## License
+
 MIT
