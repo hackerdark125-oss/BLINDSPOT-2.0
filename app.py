@@ -29,6 +29,7 @@ def show_results(name, results):
         "Contrast": r.metrics.contrast,
         "Sharpness": r.metrics.sharpness,
         "Edge detail": r.metrics.edge_density,
+        "Temporal change": r.metrics.temporal_change,
     } for r in results])
     latest = results[-1]
     a, b, c = st.columns(3)
@@ -43,6 +44,7 @@ def show_results(name, results):
                      labels={"x":"Grid column", "y":"Grid row", "color":"Image score"})
     heat.update_layout(height=420, title="Latest frame · local image-quality map")
     st.plotly_chart(heat, use_container_width=True)
+    st.write("Temporal change is the average pixel difference between consecutive sampled frames. It is a scene-change signal, not motion tracking or obstacle movement detection.")
     st.write("**Frame-by-frame measurements**")
     st.dataframe(summary, use_container_width=True, hide_index=True)
     st.write("**Regions to review · lowest image score first**")
