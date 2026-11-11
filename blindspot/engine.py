@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import cv2
 import numpy as np
+from dataclasses import replace
+from blindspot.temporal import frame_change
 
 @dataclass(frozen=True)
 class FrameMetrics:
@@ -12,6 +14,7 @@ class FrameMetrics:
     edge_density: float
     confidence: float
     uncertainty: float
+    temporal_change: float = 0.0
 
 @dataclass(frozen=True)
 class FrameAnalysis:
@@ -68,13 +71,17 @@ def sample_video(path: str, sample_every_seconds: float = 1.0,
     if not fps or not np.isfinite(fps) or fps <= 0: fps = 25.0
     step = max(1, int(round(fps * sample_every_seconds)))
     results, index = [], 0
+    previous_sample = None
     try:
         while len(results) < max_samples:
             ok, frame = capture.read()
             if not ok: break
             if index % step == 0:
                 result = analyse_frame(frame, grid_size)
-                results.append(FrameAnalysis(index/fps, result.metrics, result.confidence_map))
+                change = 0.0 if previous_sample is None else frame_change(previous_sample, frame)
+                metrics = replace(result.metrics, temporal_change=change)
+                results.append(FrameAnalysis(index/fps, metrics, result.confidence_map))
+                previous_sample = frame.copy()
             index += 1
     finally:
         capture.release()
