@@ -13,7 +13,7 @@ from blindspot.engine import sample_video, prioritise_cells
 from blindspot.live import capture_live_source
 from blindspot.calibration import calibrate_camera, load_calibration_json, undistort_frame
 from blindspot.people import process_video as process_people_video
-from blindspot.ai_detection import YOLODetector, process_video as process_ai_video, process_stream as process_ai_stream
+from blindspot.ai_detection import COCO_CLASSES, YOLODetector, process_video as process_ai_video, process_stream as process_ai_stream
 from blindspot.stereo import (
     calibrate_stereo_cameras, load_stereo_calibration_json,
     rectify_and_compute_depth,
@@ -279,29 +279,7 @@ elif mode == "AI object detection & tracking":
         ai_confidence = st.slider("Detection confidence", 0.05, 0.95, 0.25, 0.05)
         ai_image_size = st.select_slider("Inference image size", options=[320, 416, 512, 640, 768, 960], value=640)
     with ai_col3:
-        class_options = {
-            "person": 0, "bicycle": 1, "car": 2, "motorcycle": 3,
-            "airplane": 4, "bus": 5, "train": 6, "truck": 7, "boat": 8,
-            "traffic light": 9, "fire hydrant": 10, "stop sign": 11,
-            "parking meter": 12, "bench": 13, "bird": 14, "cat": 15,
-            "dog": 16, "horse": 17, "sheep": 18, "cow": 19,
-            "elephant": 20, "bear": 21, "zebra": 22, "giraffe": 23,
-            "backpack": 24, "umbrella": 25, "handbag": 26, "tie": 27,
-            "suitcase": 28, "frisbee": 29, "skis": 30, "snowboard": 31,
-            "sports ball": 32, "kite": 33, "baseball bat": 34,
-            "baseball glove": 35, "skateboard": 36, "surfboard": 37,
-            "tennis racket": 38, "bottle": 39, "wine glass": 40, "cup": 41,
-            "fork": 42, "knife": 43, "spoon": 44, "bowl": 45,
-            "banana": 46, "apple": 47, "sandwich": 48, "orange": 49,
-            "broccoli": 50, "carrot": 51, "hot dog": 52, "pizza": 53,
-            "donut": 54, "cake": 55, "chair": 56, "couch": 57,
-            "potted plant": 58, "bed": 59, "dining table": 60, "toilet": 61,
-            "tv": 62, "laptop": 63, "mouse": 64, "remote": 65,
-            "keyboard": 66, "cell phone": 67, "microwave": 68, "oven": 69,
-            "toaster": 70, "sink": 71, "refrigerator": 72, "book": 73,
-            "clock": 74, "vase": 75, "scissors": 76, "teddy bear": 77,
-            "hair drier": 78, "toothbrush": 79,
-        }
+        class_options = COCO_CLASSES
         selected_labels = st.multiselect(
             "Object classes",
             list(class_options),
@@ -421,10 +399,7 @@ elif mode == "AI live webcam / RTSP":
         )
     with live_col3:
         live_stride = st.slider("Process every Nth frame", 1, 20, 3, key="live_ai_stride")
-        live_classes = {
-            "person": 0, "bicycle": 1, "car": 2, "motorcycle": 3,
-            "bus": 5, "truck": 7, "traffic light": 9, "stop sign": 11,
-        }
+        live_classes = COCO_CLASSES
         live_labels = st.multiselect(
             "Object classes", list(live_classes),
             default=["person", "car", "motorcycle", "bus", "truck"],
