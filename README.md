@@ -145,4 +145,4 @@ Run the evaluator:
 python scripts/benchmark_tracking.py --ground-truth ground_truth.csv --predictions predictions.csv --output benchmark.json --iou 0.5
 ```
 
-Matching uses greedy class-aware IoU. ID switches count only when an object is matched to a different predicted ID on the immediately following frame index. This is a project diagnostic, not a full MOTChallenge/HOTA/IDF1 implementation. Do not infer FPS from video duration; measure inference latency directly.
+Matching uses greedy class-aware IoU. ID switches count only when an object is matched to a different predicted ID on the immediately following evaluated sample (even when source frame indices skip due to sampling). This is a project diagnostic, not a full MOTChallenge/HOTA/IDF1 implementation. Do not infer FPS from video duration; measure inference latency directly.
