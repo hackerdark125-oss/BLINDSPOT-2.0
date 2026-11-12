@@ -15,6 +15,8 @@ Notable changes to BLINDSPOT 2.0 are recorded here.
 - Expanded release validation, CLI import checks, Streamlit startup checks, and Docker build checks.
 
 ### Improved
+- Split runtime dependencies from development/test dependencies; Docker installs the runtime-only set.
+- Added localhost-bound Docker Compose configuration and container health smoke coverage in CI.
 - Stereo depth filtering now rejects left-right disparity inconsistencies before reconstructing depth.
 - Camera calibration reports per-view reprojection errors and robustly removes gross outlier views when the minimum calibration sample count remains satisfied.
 - Deployment and validation documentation now distinguish automated software checks from measured real-camera evidence.
