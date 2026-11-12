@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
 
@@ -809,7 +810,7 @@ else:
                 }
                 st.download_button(
                     "Download planar coverage summary (JSON)",
-                    __import__("json").dumps(coverage_summary, indent=2).encode("utf-8"),
+                    json.dumps(coverage_summary, indent=2).encode("utf-8"),
                     file_name="blindspot_planar_coverage_summary.json",
                     mime="application/json",
                 )
