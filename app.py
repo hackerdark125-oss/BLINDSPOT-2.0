@@ -3,12 +3,15 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
 from blindspot.engine import sample_video, prioritise_cells
 from blindspot.live import capture_live_source
+from blindspot.calibration import calibrate_camera, undistort_frame
 
 st.set_page_config(page_title="BlindSpot 2.0", page_icon="◉", layout="wide")
 st.title("◉ BLINDSPOT 2.0")
@@ -26,7 +29,7 @@ with st.sidebar:
     grid = st.selectbox("Confidence map resolution", [4, 6, 8, 12], index=2)
     review_count = st.slider("Weak regions to show", 3, 20, 5)
 
-mode = st.radio("Analysis source", ["Recorded videos", "Live webcam / RTSP"], horizontal=True)
+mode = st.radio("Analysis source", ["Recorded videos", "Live webcam / RTSP", "Camera calibration"], horizontal=True)
 
 
 def render_results(name: str, results, live: bool = False) -> pd.DataFrame:
@@ -150,7 +153,7 @@ if mode == "Recorded videos":
     else:
         st.write("Upload one or more short recordings to begin.")
 
-else:
+elif mode == "Live webcam / RTSP":
     st.subheader("Live camera capture")
     st.warning(
         "This captures from the machine running Streamlit. For a remote deployment, "
@@ -176,6 +179,82 @@ else:
             st.metric("Samples with possible frozen feed", sum(s.possible_frozen_feed for s in results))
         except Exception as exc:
             st.error(f"Live capture failed: {exc}")
+
+
+else:
+    st.subheader("Camera calibration")
+    st.write(
+        "Upload multiple photos of the same printed chessboard taken from different "
+        "positions and angles. Calibration estimates camera intrinsics and lens distortion."
+    )
+    st.warning(
+        "Use the number of INNER chessboard corners, not the number of squares. "
+        "All calibration images must have the same resolution."
+    )
+    calibration_files = st.file_uploader(
+        "Chessboard calibration photos", type=["jpg", "jpeg", "png", "bmp"],
+        accept_multiple_files=True, key="calibration_photos",
+    )
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        board_columns = st.number_input("Inner corners · columns", min_value=2, max_value=20, value=9)
+    with c2:
+        board_rows = st.number_input("Inner corners · rows", min_value=2, max_value=20, value=6)
+    with c3:
+        square_size = st.number_input("Square size (consistent units)", min_value=0.001, value=1.0, step=0.1)
+    if st.button("Calibrate camera", type="primary", disabled=not calibration_files):
+        decoded = []
+        for uploaded in calibration_files:
+            raw = np.frombuffer(uploaded.getvalue(), dtype=np.uint8)
+            image = cv2.imdecode(raw, cv2.IMREAD_COLOR)
+            if image is not None:
+                decoded.append(image)
+        try:
+            with st.spinner("Detecting chessboard corners and estimating camera parameters..."):
+                calibration = calibrate_camera(
+                    decoded,
+                    board_size=(int(board_columns), int(board_rows)),
+                    square_size=float(square_size),
+                )
+            st.success(
+                f"Calibration complete · {calibration.accepted_views} usable views · "
+                f"{calibration.rejected_views} rejected"
+            )
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Reprojection RMS", f"{calibration.rms_reprojection_error:.4f}")
+            m2.metric("Image width", calibration.image_width)
+            m3.metric("Image height", calibration.image_height)
+            st.json({
+                "camera_matrix": calibration.camera_matrix,
+                "distortion_coefficients": calibration.distortion_coefficients,
+            })
+            st.download_button(
+                "Download calibration JSON",
+                calibration.to_json().encode("utf-8"),
+                file_name="blindspot_camera_calibration.json",
+                mime="application/json",
+            )
+            preview_file = st.selectbox(
+                "Choose an uploaded photo to preview undistortion",
+                options=list(range(len(calibration_files))),
+                format_func=lambda index: calibration_files[index].name,
+            )
+            raw = np.frombuffer(calibration_files[preview_file].getvalue(), dtype=np.uint8)
+            original = cv2.imdecode(raw, cv2.IMREAD_COLOR)
+            if original is not None and (original.shape[1], original.shape[0]) == (
+                calibration.image_width, calibration.image_height
+            ):
+                corrected = undistort_frame(original, calibration)
+                left, right = st.columns(2)
+                with left:
+                    st.image(cv2.cvtColor(original, cv2.COLOR_BGR2RGB), caption="Original")
+                with right:
+                    st.image(cv2.cvtColor(corrected, cv2.COLOR_BGR2RGB), caption="Undistorted")
+            else:
+                st.info("The selected preview must match the calibration image resolution.")
+        except Exception as exc:
+            st.error(f"Calibration failed: {exc}")
+
 
 st.divider()
 st.caption(
