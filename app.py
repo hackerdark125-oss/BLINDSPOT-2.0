@@ -13,7 +13,7 @@ from blindspot.engine import sample_video, prioritise_cells
 from blindspot.live import capture_live_source
 from blindspot.calibration import calibrate_camera, load_calibration_json, undistort_frame
 from blindspot.people import process_video as process_people_video
-from blindspot.ai_detection import YOLODetector, process_video as process_ai_video
+from blindspot.ai_detection import YOLODetector, process_video as process_ai_video, process_stream as process_ai_stream
 from blindspot.stereo import (
     calibrate_stereo_cameras, load_stereo_calibration_json,
     rectify_and_compute_depth,
@@ -41,7 +41,7 @@ with st.sidebar:
     grid = st.selectbox("Confidence map resolution", [4, 6, 8, 12], index=2)
     review_count = st.slider("Weak regions to show", 3, 20, 5)
 
-mode = st.radio("Analysis source", ["Recorded videos", "Live webcam / RTSP", "Person detection & tracking", "AI object detection & tracking", "Camera calibration"], horizontal=True)
+mode = st.radio("Analysis source", ["Recorded videos", "Live webcam / RTSP", "Person detection & tracking", "AI object detection & tracking", "AI live webcam / RTSP", "Camera calibration"], horizontal=True)
 
 
 def render_results(name: str, results, live: bool = False) -> pd.DataFrame:
@@ -399,6 +399,124 @@ elif mode == "AI object detection & tracking":
                 st.error(str(exc))
             except Exception as exc:
                 st.error(f"AI object tracking failed: {exc}")
+
+
+
+elif mode == "AI live webcam / RTSP":
+    st.subheader("Live AI object detection and multi-object tracking")
+    st.warning(
+        "Capture runs on the computer hosting BLINDSPOT. Network streams must be reachable "
+        "from that computer. Keep camera credentials private."
+    )
+    source = st.text_input("Camera index or RTSP/HTTP(S) URL", value="0", key="ai_live_source")
+    live_col1, live_col2, live_col3 = st.columns(3)
+    with live_col1:
+        live_weights = st.selectbox("Model size", ["yolo11n.pt", "yolo11s.pt"], key="live_ai_weights")
+        live_duration = st.slider("Capture duration (seconds)", 3, 60, 15, key="live_ai_duration")
+    with live_col2:
+        live_confidence = st.slider("Detection confidence", 0.05, 0.95, 0.25, 0.05, key="live_ai_conf")
+        live_image_size = st.select_slider(
+            "Inference image size", options=[320, 416, 512, 640, 768, 960],
+            value=640, key="live_ai_image_size",
+        )
+    with live_col3:
+        live_stride = st.slider("Process every Nth frame", 1, 20, 3, key="live_ai_stride")
+        live_classes = {
+            "person": 0, "bicycle": 1, "car": 2, "motorcycle": 3,
+            "bus": 5, "truck": 7, "traffic light": 9, "stop sign": 11,
+        }
+        live_labels = st.multiselect(
+            "Object classes", list(live_classes),
+            default=["person", "car", "motorcycle", "bus", "truck"],
+            key="live_ai_classes",
+        )
+    if st.button("Start live AI tracking", type="primary", disabled=not source.strip()):
+        if not live_labels:
+            st.warning("Select at least one object class.")
+        else:
+            try:
+                with st.spinner("Connecting to the camera and tracking objects with YOLO + ByteTrack..."):
+                    detector = get_yolo_detector(live_weights)
+                    live_results = process_ai_stream(
+                        source,
+                        duration_seconds=float(live_duration),
+                        sample_every_frames=live_stride,
+                        max_samples=max_frames,
+                        weights=live_weights,
+                        classes=[live_classes[label] for label in live_labels],
+                        confidence=live_confidence,
+                        image_size=live_image_size,
+                        detector=detector,
+                    )
+                live_observations = []
+                live_track_ids = set()
+                live_class_counts = {}
+                for result in live_results:
+                    st.image(
+                        cv2.cvtColor(result.annotated_frame, cv2.COLOR_BGR2RGB),
+                        caption=f"Elapsed {result.timestamp_seconds:.2f}s · {len(result.detections)} object(s)",
+                        use_container_width=True,
+                    )
+                    for item in result.detections:
+                        if item.track_id is not None:
+                            live_track_ids.add(item.track_id)
+                        live_class_counts[item.class_name] = live_class_counts.get(item.class_name, 0) + 1
+                        live_observations.append({
+                            "Frame index": result.frame_index,
+                            "Time (s)": result.timestamp_seconds,
+                            "YOLO + ByteTrack (ms)": result.inference_time_ms,
+                            "Track ID": item.track_id,
+                            "Class": item.class_name,
+                            "Class ID": item.class_id,
+                            "Confidence": item.confidence,
+                            "X": item.x, "Y": item.y,
+                            "Width": item.width, "Height": item.height,
+                        })
+                live_df = pd.DataFrame(live_observations, columns=[
+                    "Frame index", "Time (s)", "YOLO + ByteTrack (ms)", "Track ID",
+                    "Class", "Class ID", "Confidence", "X", "Y", "Width", "Height",
+                ])
+                mean_processing_ms = float(np.mean([r.inference_time_ms for r in live_results]))
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Frames processed", len(live_results))
+                m2.metric("Unique tracked IDs", len(live_track_ids))
+                m3.metric("Object observations", len(live_observations))
+                m4.metric("Mean processing", f"{mean_processing_ms:.1f} ms")
+                if mean_processing_ms > 0:
+                    st.caption(
+                        f"YOLO + ByteTrack processing: {1000.0 / mean_processing_ms:.1f} FPS · "
+                        "excludes camera decode, rendering, and network delay"
+                    )
+                if live_class_counts:
+                    st.write("**Detections by class**")
+                    st.bar_chart(pd.Series(live_class_counts, name="Observations"))
+                st.dataframe(live_df, use_container_width=True, hide_index=True)
+                st.download_button(
+                    "Download live AI tracking CSV",
+                    live_df.to_csv(index=False).encode("utf-8"),
+                    file_name="blindspot_live_ai_tracking.csv",
+                    mime="text/csv",
+                    key="download_live_ai_tracking",
+                )
+                frame_df = pd.DataFrame([{
+                    "Frame index": result.frame_index,
+                    "Time (s)": result.timestamp_seconds,
+                    "YOLO + ByteTrack (ms)": result.inference_time_ms,
+                    "Detections": len(result.detections),
+                } for result in live_results])
+                st.download_button(
+                    "Download live per-frame performance CSV",
+                    frame_df.to_csv(index=False).encode("utf-8"),
+                    file_name="blindspot_live_ai_performance.csv",
+                    mime="text/csv",
+                    key="download_live_ai_performance",
+                )
+                if not live_observations:
+                    st.warning("No selected objects were detected in the sampled live frames.")
+            except ImportError as exc:
+                st.error(str(exc))
+            except Exception as exc:
+                st.error(f"Live AI tracking failed: {exc}")
 
 else:
     st.subheader("Camera calibration")
