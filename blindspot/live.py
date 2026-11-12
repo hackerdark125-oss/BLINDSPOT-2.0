@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 
 from blindspot.engine import FrameAnalysis, analyse_frame
+from blindspot.motion import MotionFreshnessTracker
 from blindspot.tracking import FrameFreezeDetector
 
 
@@ -57,6 +58,7 @@ def capture_live_source(
         raise ValueError(f"Could not open camera source: {camera_source if isinstance(camera_source, int) else 'stream URL'}")
 
     detector = FrameFreezeDetector()
+    motion_tracker = MotionFreshnessTracker(grid_size=grid_size)
     samples: list[LiveSample] = []
     started = time.monotonic()
     next_sample = started
@@ -68,13 +70,16 @@ def capture_live_source(
                 continue
             now = time.monotonic()
             if now >= next_sample:
+                timestamp = now - started
                 analysis = analyse_frame(frame, grid_size)
+                motion = motion_tracker.update(frame, timestamp)
                 change, frozen = detector.update(frame)
-                samples.append(LiveSample(
-                    FrameAnalysis(now - started, analysis.metrics, analysis.confidence_map),
-                    change,
-                    frozen,
-                ))
+                analysis = FrameAnalysis(
+                    timestamp, analysis.metrics, analysis.confidence_map,
+                    motion.magnitude_map, motion.activity_age_seconds,
+                    motion.mean_magnitude,
+                )
+                samples.append(LiveSample(analysis, change, frozen))
                 next_sample = now + sample_every_seconds
     finally:
         capture.release()
