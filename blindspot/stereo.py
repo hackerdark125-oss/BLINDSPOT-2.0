@@ -140,6 +140,8 @@ def calibrate_stereo_cameras(
     arrays = (rotation, translation, essential, fundamental)
     if not np.isfinite(rms) or any(not np.isfinite(array).all() for array in arrays):
         raise RuntimeError("stereo calibration returned non-finite parameters")
+    if float(np.linalg.norm(translation)) <= 1e-9:
+        raise ValueError("stereo calibration produced a near-zero camera baseline")
 
     return StereoCalibration(
         rotation_matrix=rotation.tolist(),
@@ -182,6 +184,7 @@ def load_stereo_calibration_json(content: str) -> StereoCalibration:
         or not all(np.isfinite(x).all() for x in (rotation, translation, essential, fundamental))
         or calibration.image_width < 1 or calibration.image_height < 1
         or not calibration.translation_unit.strip()
+        or float(np.linalg.norm(translation)) <= 1e-9
     ):
         raise ValueError("stereo calibration JSON contains invalid parameters")
     return calibration
@@ -229,6 +232,8 @@ def rectify_and_compute_depth(
     translation = np.asarray(stereo.translation_vector, dtype=np.float64).reshape(3, 1)
     if matrix_a.shape != (3, 3) or matrix_b.shape != (3, 3) or rotation.shape != (3, 3):
         raise ValueError("camera or stereo matrices have invalid dimensions")
+    if float(np.linalg.norm(translation)) <= 1e-9:
+        raise ValueError("stereo camera baseline must be non-zero")
 
     size = expected_size
     rect_a, rect_b, projection_a, projection_b, q_matrix, _, _ = cv2.stereoRectify(
