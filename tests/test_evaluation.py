@@ -10,12 +10,12 @@ def row(frame, track, x=0, class_id=0):
 
 def test_perfect_detection_and_stable_tracking():
     gt = [row(0, 7), row(1, 7)]
-    result = evaluate_tracking(gt, [row(0, 3), row(1, 3)], inference_times_ms=[20, 30])
+    result = evaluate_tracking(gt, [row(0, 3), row(1, 3)], processing_times_ms=[20, 30])
     assert result["precision"] == 1
     assert result["recall"] == 1
     assert result["f1"] == 1
     assert result["id_switches"] == 0
-    assert result["estimated_fps"] == pytest.approx(40)
+    assert result["estimated_processing_fps"] == pytest.approx(40)
 
 
 def test_counts_false_positives_false_negatives_and_id_switches():
@@ -47,7 +47,7 @@ def test_rejects_invalid_box_and_latency():
     with pytest.raises(ValueError):
         evaluate_tracking([bad], [])
     with pytest.raises(ValueError):
-        evaluate_tracking([], [], inference_times_ms=[0])
+        evaluate_tracking([], [], processing_times_ms=[0])
 
 
 def test_id_switch_counts_consecutive_sampled_frames_with_stride():
@@ -56,20 +56,20 @@ def test_id_switch_counts_consecutive_sampled_frames_with_stride():
     assert evaluate_tracking(gt, pred)["id_switches"] == 1
 
 
-def test_benchmark_latency_is_counted_once_per_sampled_frame():
-    from scripts.benchmark_tracking import extract_frame_inference_times
+def test_benchmark_processing_time_is_counted_once_per_sampled_frame():
+    from scripts.benchmark_tracking import extract_frame_processing_times
 
     rows = [
-        {"frame_index": "0", "Inference (ms)": "20.0"},
-        {"frame_index": "0", "Inference (ms)": "20.0"},
-        {"frame_index": "3", "Inference (ms)": "40.0"},
+        {"frame_index": "0", "YOLO + ByteTrack (ms)": "20.0"},
+        {"frame_index": "0", "YOLO + ByteTrack (ms)": "20.0"},
+        {"frame_index": "3", "YOLO + ByteTrack (ms)": "40.0"},
     ]
-    assert extract_frame_inference_times(rows) == [20.0, 40.0]
+    assert extract_frame_processing_times(rows) == [20.0, 40.0]
 
 @pytest.mark.parametrize("bad_timing", [float("nan"), float("inf")])
-def test_rejects_non_finite_inference_timing(bad_timing):
+def test_rejects_non_finite_processing_timing(bad_timing):
     with pytest.raises(ValueError):
-        evaluate_tracking([], [], inference_times_ms=[bad_timing])
+        evaluate_tracking([], [], processing_times_ms=[bad_timing])
 
 
 def test_rejects_non_finite_box_coordinates():
