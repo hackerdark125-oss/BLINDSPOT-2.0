@@ -62,7 +62,8 @@ Use a short clip containing several clearly visible, upright pedestrians.
 - [ ] Capture 10–20 chessboard photos at varied positions, distances, and tilts.
 - [ ] Keep resolution and focus fixed.
 - [ ] Run calibration and save the JSON.
-- [ ] Inspect reprojection RMS and compare original/undistorted previews.
+- [ ] Inspect overall RMS, mean per-view error, worst per-view error, and compare original/undistorted previews.
+- [ ] Confirm outlier views are only removed when the requested minimum view count remains; retain diverse board poses and do not treat low reprojection error as proof of metric accuracy.
 - [ ] Re-run with a different set of photos and check that results are reasonably consistent.
 
 ## 6. Stereo calibration and depth

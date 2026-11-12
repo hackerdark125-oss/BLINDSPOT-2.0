@@ -21,7 +21,7 @@ BlindSpot 2.0 is an experimental computer-vision research prototype that highlig
 - Built-in HOG pedestrian detection with temporary centroid-based track IDs
 - Optional YOLO11 object detection with persistent ByteTrack IDs for people, cars, motorcycles, buses, trucks, and other COCO classes
 - Annotated sampled video frames and per-detection CSV export
-- Chessboard-based camera intrinsic and lens-distortion calibration
+- Chessboard-based camera intrinsic and lens-distortion calibration with robust outlier-view rejection and per-view reprojection diagnostics
 - Paired chessboard stereo calibration for relative camera rotation and translation
 - Planar two-camera ground-footprint and overlap estimation from calibrated stereo pose
 - Stereo visual odometry, depth-to-3D point-cloud reconstruction, and PLY export
