@@ -45,3 +45,40 @@ def test_invalid_frame_rejected():
     tracker = MotionFreshnessTracker()
     with pytest.raises(ValueError):
         tracker.update(np.array([]), 0.0)
+
+
+def test_scene_change_resets_motion_history():
+    tracker = MotionFreshnessTracker(grid_size=4, camera_motion_compensation=False)
+    dark = np.zeros((160, 160), dtype=np.uint8)
+    bright = np.full((160, 160), 255, dtype=np.uint8)
+    tracker.update(dark, 0.0)
+    result = tracker.update(bright, 1.0)
+    assert result.scene_changed
+    assert not result.camera_motion_compensated
+    assert np.all(result.magnitude_map == 0)
+    assert np.all(result.activity_age_seconds == 0)
+    later = tracker.update(bright, 3.0)
+    assert not later.scene_changed
+    assert np.allclose(later.activity_age_seconds, 2.0)
+
+
+def test_camera_motion_compensation_reports_success_on_textured_translation():
+    cv2 = pytest.importorskip("cv2")
+    rng = np.random.default_rng(7)
+    first = rng.integers(0, 256, size=(240, 240), dtype=np.uint8)
+    second = cv2.warpAffine(
+        first, np.float32([[1, 0, 6], [0, 1, 3]]), (240, 240),
+        borderMode=cv2.BORDER_REFLECT,
+    )
+    tracker = MotionFreshnessTracker(grid_size=4, motion_threshold=0.1)
+    tracker.update(first, 0.0)
+    result = tracker.update(second, 1.0)
+    assert result.camera_motion_compensated
+
+
+def test_camera_motion_compensation_can_be_disabled():
+    tracker = MotionFreshnessTracker(grid_size=4, camera_motion_compensation=False)
+    frame = np.zeros((120, 120), dtype=np.uint8)
+    tracker.update(frame, 0.0)
+    result = tracker.update(frame, 1.0)
+    assert not result.camera_motion_compensated
