@@ -28,6 +28,8 @@ Use at least two short videos with different lighting and scene content.
 - [ ] Confirm frame reports include camera-motion compensation and scene-change diagnostic flags.
 - [ ] Download the CSV and check timestamps and numeric columns.
 - [ ] Upload a second camera clip and confirm camera comparison is shown.
+- [ ] Set a known time offset for each camera and confirm synchronized sample groups are exported only within the configured skew tolerance.
+- [ ] Confirm each matched sample index is used at most once per non-reference camera.
 - [ ] Try an invalid or corrupt file and confirm the app reports an error without crashing.
 
 ## 3. Live camera
@@ -80,6 +82,8 @@ Use a short clip containing several clearly visible, upright pedestrians.
 - [ ] Run `python scripts/benchmark_quality.py --input quality_labels.csv --output quality_benchmark.json`.
 - [ ] Record sample count, MAE, RMSE, bias, correlations, and score-bin summaries for each condition.
 - [ ] Do not call the score calibrated or validated until it has been evaluated on a separate held-out labelled set.
+
+Timestamp alignment uses manual offsets and nearest-neighbour matching. It is not hardware time synchronization and does not establish geometric overlap or 3D coverage.
 
 ## 7. Release evidence
 
