@@ -62,3 +62,49 @@ def test_stereo_requires_detectable_paired_boards():
         calibrate_stereo_cameras(
             images, images, make_intrinsics(), make_intrinsics()
         )
+
+def make_stereo():
+    from blindspot.stereo import StereoCalibration
+
+    return StereoCalibration(
+        rotation_matrix=np.eye(3).tolist(),
+        translation_vector=[-10.0, 0.0, 0.0],
+        essential_matrix=[[0, 0, 0], [0, 0, -10], [0, 10, 0]],
+        fundamental_matrix=[[0, 0, 0], [0, 0, -0.1], [0, 0.1, 0]],
+        rms_reprojection_error=0.3,
+        image_width=160,
+        image_height=120,
+        accepted_pairs=5,
+        rejected_pairs=0,
+        translation_unit="cm",
+    )
+
+
+def test_stereo_calibration_json_round_trip():
+    from blindspot.stereo import load_stereo_calibration_json
+
+    original = make_stereo()
+    loaded = load_stereo_calibration_json(original.to_json())
+    assert loaded.translation_vector == original.translation_vector
+    assert loaded.translation_unit == "cm"
+
+
+def test_stereo_depth_rejects_wrong_image_resolution():
+    from blindspot.stereo import rectify_and_compute_depth
+
+    image = np.zeros((80, 80, 3), dtype=np.uint8)
+    with pytest.raises(ValueError, match="match the stereo calibration resolution"):
+        rectify_and_compute_depth(
+            image, image, make_intrinsics(), make_intrinsics(), make_stereo()
+        )
+
+
+def test_stereo_depth_rejects_invalid_disparity_range():
+    from blindspot.stereo import rectify_and_compute_depth
+
+    image = np.zeros((120, 160, 3), dtype=np.uint8)
+    with pytest.raises(ValueError, match="multiple of 16"):
+        rectify_and_compute_depth(
+            image, image, make_intrinsics(), make_intrinsics(), make_stereo(),
+            num_disparities=15,
+        )
