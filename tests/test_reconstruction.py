@@ -14,7 +14,7 @@ def test_depth_backprojection_and_stride():
 
 def test_depth_point_cloud_filters_invalid_and_far_pixels():
     depth = np.array([[1.0, np.nan], [4.0, 8.0]])
-    cloud = depth_to_point_cloud(depth, np.eye(3), max_depth=5)
+    cloud = depth_to_point_cloud(depth, np.eye(3), max_depth=5, stride=1)
     assert cloud.shape == (2, 6)
 
 
