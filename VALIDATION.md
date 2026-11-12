@@ -85,9 +85,9 @@ The repository can be considered **software-complete for its documented prototyp
 ## 6.1 Quantitative YOLO/ByteTrack benchmark
 
 - [ ] Label a representative clip with stable object IDs and COCO class IDs.
-- [ ] Export predictions with original frame indices and pixel-space boxes.
+- [ ] Export predictions with original frame indices and pixel-space boxes, plus the separate per-frame performance CSV (including zero-detection frames).
 - [ ] Ensure ground-truth and prediction CSVs cover identical sampled frame indices.
-- [ ] Run `python scripts/benchmark_tracking.py --ground-truth ground_truth.csv --predictions predictions.csv --output benchmark.json`.
+- [ ] Run `python scripts/benchmark_tracking.py --ground-truth ground_truth.csv --predictions predictions.csv --timings blindspot_ai_frame_performance.csv --output benchmark.json`.
 - [ ] Record precision, recall, F1, mean matched IoU, false positives, false negatives, and ID switches.
 - [ ] Measure inference latency separately on the target machine and record the hardware, model size, image size, and frame stride.
 - [ ] Repeat in daylight, low light, crowded scenes, and partial occlusion; keep each condition's result separate.
