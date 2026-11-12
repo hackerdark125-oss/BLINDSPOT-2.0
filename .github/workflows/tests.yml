@@ -77,3 +77,24 @@ jobs:
           PY
       - name: Build Docker image
         run: docker build -t blindspot-2:ci .
+      - name: Smoke-test Docker container health
+        run: |
+          docker run -d --name blindspot-2-ci -p 127.0.0.1:8502:8501 blindspot-2:ci
+          cleanup() { docker rm -f blindspot-2-ci >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          python - <<'PY'
+          import time
+          import urllib.request
+
+          url = "http://127.0.0.1:8502/_stcore/health"
+          for attempt in range(45):
+              try:
+                  with urllib.request.urlopen(url, timeout=2) as response:
+                      if response.status == 200:
+                          print("Dockerized Streamlit health endpoint is ready")
+                          break
+              except Exception:
+                  time.sleep(1)
+          else:
+              raise SystemExit("Dockerized Streamlit did not become healthy within 45 seconds")
+          PY
