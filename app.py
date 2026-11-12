@@ -12,6 +12,7 @@ import streamlit as st
 from blindspot.engine import sample_video, prioritise_cells
 from blindspot.live import capture_live_source
 from blindspot.calibration import calibrate_camera, load_calibration_json, undistort_frame
+from blindspot.people import process_video as process_people_video
 from blindspot.stereo import (
     calibrate_stereo_cameras, load_stereo_calibration_json,
     rectify_and_compute_depth,
@@ -33,7 +34,7 @@ with st.sidebar:
     grid = st.selectbox("Confidence map resolution", [4, 6, 8, 12], index=2)
     review_count = st.slider("Weak regions to show", 3, 20, 5)
 
-mode = st.radio("Analysis source", ["Recorded videos", "Live webcam / RTSP", "Camera calibration"], horizontal=True)
+mode = st.radio("Analysis source", ["Recorded videos", "Live webcam / RTSP", "Person detection & tracking", "Camera calibration"], horizontal=True)
 
 
 def render_results(name: str, results, live: bool = False) -> pd.DataFrame:
@@ -185,6 +186,72 @@ elif mode == "Live webcam / RTSP":
             st.error(f"Live capture failed: {exc}")
 
 
+
+elif mode == "Person detection & tracking":
+    st.subheader("Pedestrian detection and tracking")
+    st.info(
+        "Uses OpenCV's built-in HOG pedestrian detector. It detects upright people, "
+        "not arbitrary object classes. Track IDs are temporary and can change after "
+        "long occlusions or abrupt movement."
+    )
+    tracking_upload = st.file_uploader(
+        "Upload a video for pedestrian tracking",
+        type=["mp4", "avi", "mov", "mkv"], key="people_tracking_video",
+    )
+    track_col1, track_col2 = st.columns(2)
+    with track_col1:
+        frame_stride = st.slider("Process every Nth frame", 1, 30, 5)
+    with track_col2:
+        detector_scale = st.select_slider(
+            "Detection speed / sensitivity", options=[1.01, 1.03, 1.05, 1.08, 1.1],
+            value=1.05, format_func=lambda value: f"{value:.2f}",
+        )
+    if tracking_upload and st.button("Detect and track people", type="primary"):
+        suffix = Path(tracking_upload.name).suffix or ".mp4"
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                tmp.write(tracking_upload.getvalue())
+                tracking_path = tmp.name
+            try:
+                with st.spinner("Detecting pedestrians and associating track IDs..."):
+                    tracking_results = process_people_video(
+                        tracking_path, sample_every_frames=frame_stride,
+                        max_samples=max_frames, detector_scale=float(detector_scale),
+                    )
+            finally:
+                Path(tracking_path).unlink(missing_ok=True)
+            records, visible_ids = [], set()
+            for result in tracking_results:
+                st.image(
+                    cv2.cvtColor(result.annotated_frame, cv2.COLOR_BGR2RGB),
+                    caption=f"Time {result.timestamp_seconds:.2f}s · {len(result.detections)} person(s)",
+                    use_container_width=True,
+                )
+                for item in result.detections:
+                    visible_ids.add(item.track_id)
+                    box = item.detection
+                    records.append({
+                        "Time (s)": result.timestamp_seconds, "Track ID": item.track_id,
+                        "X": box.x, "Y": box.y, "Width": box.width, "Height": box.height,
+                        "Detector score": box.score,
+                    })
+            tracking_df = pd.DataFrame(records, columns=[
+                "Time (s)", "Track ID", "X", "Y", "Width", "Height", "Detector score"
+            ])
+            metric_a, metric_b, metric_c = st.columns(3)
+            metric_a.metric("Frames processed", len(tracking_results))
+            metric_b.metric("Unique track IDs", len(visible_ids))
+            metric_c.metric("Person observations", len(records))
+            st.dataframe(tracking_df, use_container_width=True, hide_index=True)
+            st.download_button(
+                "Download tracking results (CSV)",
+                tracking_df.to_csv(index=False).encode("utf-8"),
+                file_name="blindspot_people_tracking.csv", mime="text/csv",
+            )
+            if not records:
+                st.warning("No pedestrians were detected in the sampled frames.")
+        except Exception as exc:
+            st.error(f"Person detection failed: {exc}")
 
 else:
     st.subheader("Camera calibration")

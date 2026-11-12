@@ -15,6 +15,8 @@ BlindSpot 2.0 is an experimental computer-vision research prototype that highlig
 - Dense optical-flow motion maps using Farneback
 - Per-grid-cell time-since-motion activity maps
 - Repeated-frame diagnostic for potentially frozen feeds
+- Built-in HOG pedestrian detection with temporary centroid-based track IDs
+- Annotated sampled video frames and per-detection CSV export
 - Chessboard-based camera intrinsic and lens-distortion calibration
 - Paired chessboard stereo calibration for relative camera rotation and translation
 - Stereo rectification, SGBM disparity estimation, and depth-map CSV export
@@ -52,10 +54,16 @@ For **Two-camera stereo extrinsics**, first calibrate each camera separately and
 
 For **Stereo depth preview**, upload both intrinsic JSON files, the stereo extrinsics JSON, and a synchronized image pair from the calibrated cameras. The app rectifies the pair, estimates disparity with StereoSGBM, and reprojects disparity into a depth map. Depth units follow the chessboard square-size unit. Depth quality depends on accurate calibration, fixed camera geometry, synchronization, texture, and visibility in both views; invalid pixels are expected around occlusions and low-texture regions. This is a prototype depth estimate, not a safety or measurement guarantee.
 
+## Pedestrian detection and tracking
+Select **Person detection & tracking** and upload a short video. The app uses OpenCV's built-in HOG + linear SVM pedestrian detector and a nearest-centroid tracker to associate detections across sampled frames. It displays annotated frames and exports timestamps, temporary track IDs, bounding boxes, and detector scores as CSV. This classical detector targets upright pedestrians; it is not a general object detector and may miss small, occluded, distant, or unusual poses. Track IDs are local to one video and can switch after occlusion or abrupt movement.
+
 ## Understanding motion activity age
 The motion tracker computes dense optical flow between sampled frames with OpenCV's Farneback algorithm. Each grid cell stores its average flow magnitude and elapsed time since motion last exceeded a configurable threshold.
 
 **Activity age is not observation freshness.** A perfectly static scene can have a high activity age even while the camera is operating correctly. Camera movement, lighting changes, compression artefacts, and sampling interval can affect optical-flow values. Use these maps as diagnostics for human review, not as proof that an area is unseen or stale.
+
+## Release validation
+See [VALIDATION.md](VALIDATION.md) for the full automated and real-camera release checklist, including pedestrian detection, calibration, stereo depth, and benchmark evidence.
 
 ## Deployment
 See [DEPLOYMENT.md](DEPLOYMENT.md) for Docker and Streamlit Community Cloud instructions. The repository includes a Dockerfile and a dark Streamlit theme.
@@ -81,6 +89,7 @@ Each sampled frame is divided into a configurable grid. Every cell receives a he
 - [x] Paired chessboard stereo extrinsic calibration
 - [x] Stereo rectification, disparity estimation, and depth-map export
 - [x] Input validation, unit tests, and CI
+- [x] Baseline pedestrian detection and short-term centroid tracking
 - [ ] Scene-change-aware activity baselines and robust camera-motion compensation
 - [ ] Multi-camera time synchronisation and validated 3D coverage reconstruction
 - [ ] Geometric multi-camera coverage estimation using camera pose / visual localisation
