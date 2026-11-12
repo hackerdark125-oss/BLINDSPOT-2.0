@@ -118,7 +118,8 @@ def sample_video(path: str, sample_every_seconds: float = 1.0,
                 results.append(FrameAnalysis(
                     timestamp, result.metrics, result.confidence_map,
                     motion.magnitude_map, motion.activity_age_seconds,
-                    motion.mean_magnitude,
+                    motion.mean_magnitude, motion.camera_motion_compensated,
+                    motion.scene_changed,
                 ))
             index += 1
     finally:
