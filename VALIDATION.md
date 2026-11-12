@@ -32,6 +32,10 @@ Use at least two short videos with different lighting and scene content.
 - [ ] Confirm each matched sample index is used at most once per non-reference camera.
 - [ ] Try an invalid or corrupt file and confirm the app reports an error without crashing.
 
+- [ ] Run the batch multi-camera fusion CLI with two calibrated PLY clouds and verify the fused PLY and JSON summary:
+  `python scripts/fuse_multicamera.py --cloud left=left.ply --cloud right=right.ply --poses camera_poses.json --output fused.ply --summary fusion_summary.json`
+- [ ] Confirm that mismatched camera IDs, missing files, malformed pose JSON, and invalid rotations fail with clear messages.
+
 ## 3. Live camera
 
 - [ ] Test the local webcam at index 0 (try 1 if multiple cameras are attached).
