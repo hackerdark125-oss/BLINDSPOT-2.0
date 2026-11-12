@@ -611,9 +611,10 @@ else:
                     f"{calibration.rejected_views} rejected"
                 )
                 m1, m2, m3 = st.columns(3)
-                m1.metric("Reprojection RMS", f"{calibration.rms_reprojection_error:.4f}")
-                m2.metric("Image width", calibration.image_width)
-                m3.metric("Image height", calibration.image_height)
+                m1.metric("Overall reprojection RMS", f"{calibration.rms_reprojection_error:.4f} px")
+                m2.metric("Mean per-view error", f"{calibration.mean_view_reprojection_error_px:.4f} px")
+                m3.metric("Worst per-view error", f"{calibration.max_view_reprojection_error_px:.4f} px")
+                st.caption("Grossly inconsistent calibration views are filtered using a robust median/MAD threshold when enough views remain. Review all metrics; low reprojection error alone does not guarantee accurate real-world measurements.")
                 st.json({
                     "camera_matrix": calibration.camera_matrix,
                     "distortion_coefficients": calibration.distortion_coefficients,
