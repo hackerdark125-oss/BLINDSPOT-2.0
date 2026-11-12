@@ -57,6 +57,9 @@ The motion tracker computes dense optical flow between sampled frames with OpenC
 
 **Activity age is not observation freshness.** A perfectly static scene can have a high activity age even while the camera is operating correctly. Camera movement, lighting changes, compression artefacts, and sampling interval can affect optical-flow values. Use these maps as diagnostics for human review, not as proof that an area is unseen or stale.
 
+## Deployment
+See [DEPLOYMENT.md](DEPLOYMENT.md) for Docker and Streamlit Community Cloud instructions. The repository includes a Dockerfile and a dark Streamlit theme.
+
 ## Run tests
 ```bat
 python -m pytest -q
@@ -93,7 +96,7 @@ Each sampled frame is divided into a configurable grid. Every cell receives a he
 - No claim of novelty or operational readiness is made.
 
 ## Tech stack
-Python · OpenCV · NumPy · Pandas · Plotly · Streamlit · Pytest · GitHub Actions
+Python · OpenCV · NumPy · Pandas · Plotly · Streamlit · Pytest · GitHub Actions · Docker
 
 ## References
 - [OpenCV dense optical flow tutorial](https://docs.opencv.org/4.x/d4/dee/tutorial_optical_flow.html)
