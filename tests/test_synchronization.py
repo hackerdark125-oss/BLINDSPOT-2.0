@@ -37,3 +37,11 @@ def test_synchronization_returns_empty_when_streams_do_not_overlap():
 def test_synchronization_rejects_invalid_streams(streams):
     with pytest.raises(ValueError):
         synchronize_timestamps(streams)
+
+
+def test_failed_multi_camera_match_does_not_consume_partial_samples():
+    matches = synchronize_timestamps(
+        {"a": [0.0, 0.05], "b": [0.05], "c": [10.0]},
+        tolerance_seconds=0.1,
+    )
+    assert matches == []
