@@ -43,9 +43,14 @@ Do not publish a field-accuracy or safety claim without this evidence.
 - Pose-graph correction accepts manually supplied loop-closure constraints;
   it does not discover loop closures and currently adjusts translations only.
 - Multi-camera point-cloud fusion requires externally verified camera-to-world
-  poses in a common coordinate frame and distance unit.
+  poses in a common coordinate frame and distance unit; the dashboard and CLI do
+  not estimate extrinsics or automatically register overlapping clouds.
+- PLY import supports ASCII and binary little-/big-endian PLY 1.0 with scalar
+  XYZRGB vertex properties; list-valued vertex properties are not supported.
 - Synthetic benchmarks measure software throughput on the runner, not real
   camera accuracy or target-machine performance.
+- Automatic loop-closure detection and full 6DoF pose-graph optimisation remain
+  future work; the current correction uses manually verified translation constraints.
 
 ## Release procedure
 
