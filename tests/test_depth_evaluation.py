@@ -43,3 +43,10 @@ def test_depth_benchmark_requires_at_least_one_valid_measurement():
         evaluate_depth_samples([
             {"known_distance": 10, "measured_distance": None, "valid_pixels": 0, "total_pixels": 100}
         ])
+
+
+def test_depth_benchmark_rejects_fractional_pixel_counts():
+    with pytest.raises(ValueError, match="pixel counts"):
+        evaluate_depth_samples([
+            {"known_distance": 10, "measured_distance": 10, "valid_pixels": 1.5, "total_pixels": 10}
+        ])
