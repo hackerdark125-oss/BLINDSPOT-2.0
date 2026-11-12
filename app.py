@@ -14,9 +14,9 @@ st.set_page_config(page_title="BlindSpot 2.0", page_icon="◉", layout="wide")
 st.title("◉ BLINDSPOT 2.0")
 st.caption("VISUAL UNCERTAINTY INTELLIGENCE SYSTEM · VIDEO & LIVE CAMERA ANALYSIS")
 st.info(
-    "Image-quality scores are heuristic review signals, not calibrated probabilities "
-    "or proof of physical visibility. Live capture uses a camera accessible to the computer "
-    "running this Streamlit process."
+    "Image-quality scores are heuristic review signals, not calibrated probabilities. "
+    "Motion activity age measures time since measurable pixel motion, not whether an area "
+    "was observed. A static scene can naturally have a high activity age."
 )
 
 with st.sidebar:
@@ -30,30 +30,36 @@ mode = st.radio("Analysis source", ["Recorded videos", "Live webcam / RTSP"], ho
 
 
 def render_results(name: str, results, live: bool = False) -> pd.DataFrame:
+    analyses = [r.analysis if live else r for r in results]
     summary = pd.DataFrame([{
-        "Time (s)": r.analysis.timestamp_seconds if live else r.timestamp_seconds,
-        "Confidence": r.analysis.metrics.confidence if live else r.metrics.confidence,
-        "Uncertainty": r.analysis.metrics.uncertainty if live else r.metrics.uncertainty,
-        "Brightness": r.analysis.metrics.mean_brightness if live else r.metrics.mean_brightness,
-        "Contrast": r.analysis.metrics.contrast if live else r.metrics.contrast,
-        "Sharpness": r.analysis.metrics.sharpness if live else r.metrics.sharpness,
-        "Edge density": r.analysis.metrics.edge_density if live else r.metrics.edge_density,
-    } for r in results])
+        "Time (s)": a.timestamp_seconds,
+        "Confidence": a.metrics.confidence,
+        "Uncertainty": a.metrics.uncertainty,
+        "Brightness": a.metrics.mean_brightness,
+        "Contrast": a.metrics.contrast,
+        "Sharpness": a.metrics.sharpness,
+        "Edge density": a.metrics.edge_density,
+        "Mean motion": a.mean_motion,
+        "Maximum activity age (s)": (
+            float(a.motion_age_seconds.max()) if a.motion_age_seconds is not None else None
+        ),
+    } for a in analyses])
     if live:
         summary["Frame change"] = [r.frame_change_score for r in results]
         summary["Possible frozen feed"] = [r.possible_frozen_feed for r in results]
 
-    a, b, c = st.columns(3)
+    a, b, c, d = st.columns(4)
     a.metric("Mean confidence", f"{summary['Confidence'].mean():.1f}/100")
     b.metric("Mean uncertainty", f"{summary['Uncertainty'].mean():.1f}/100")
     c.metric("Frames sampled", len(results))
+    d.metric("Mean motion", f"{summary['Mean motion'].mean():.2f}")
 
     trend = px.line(summary, x="Time (s)", y=["Confidence", "Uncertainty"],
                     title="Confidence and uncertainty over time", markers=True)
     trend.update_layout(height=330, legend_title_text="Metric")
     st.plotly_chart(trend, use_container_width=True)
 
-    latest = results[-1].analysis if live else results[-1]
+    latest = analyses[-1]
     heatmap = px.imshow(
         latest.confidence_map, zmin=0, zmax=100,
         color_continuous_scale="RdYlGn", origin="upper",
@@ -62,6 +68,27 @@ def render_results(name: str, results, live: bool = False) -> pd.DataFrame:
     )
     heatmap.update_layout(height=360)
     st.plotly_chart(heatmap, use_container_width=True)
+
+    if latest.motion_magnitude_map is not None and latest.motion_age_seconds is not None:
+        motion_col, age_col = st.columns(2)
+        with motion_col:
+            motion_fig = px.imshow(
+                latest.motion_magnitude_map, origin="upper",
+                color_continuous_scale="Viridis",
+                labels={"x": "Grid column", "y": "Grid row", "color": "Flow magnitude"},
+                title="Dense optical-flow activity",
+            )
+            motion_fig.update_layout(height=330)
+            st.plotly_chart(motion_fig, use_container_width=True)
+        with age_col:
+            age_fig = px.imshow(
+                latest.motion_age_seconds, origin="upper",
+                color_continuous_scale="YlOrRd",
+                labels={"x": "Grid column", "y": "Grid row", "color": "Seconds"},
+                title="Time since measurable motion · not observation freshness",
+            )
+            age_fig.update_layout(height=330)
+            st.plotly_chart(age_fig, use_container_width=True)
 
     st.write("**Regions to review · lowest confidence first**")
     st.dataframe(pd.DataFrame(prioritise_cells(latest.confidence_map, review_count)),
@@ -102,6 +129,8 @@ if mode == "Recorded videos":
                     "Camera": upload.name,
                     "Mean confidence": summary["Confidence"].mean(),
                     "Mean uncertainty": summary["Uncertainty"].mean(),
+                    "Mean motion": summary["Mean motion"].mean(),
+                    "Max activity age (s)": summary["Maximum activity age (s)"].max(),
                     "Frames sampled": len(results),
                 })
             except Exception as exc:
@@ -143,7 +172,7 @@ else:
                     "Possible repeated/frozen frames detected. This can also happen "
                     "when the camera is pointed at a completely static scene."
                 )
-            summary = render_results("live_camera", results, live=True)
+            render_results("live_camera", results, live=True)
             st.metric("Samples with possible frozen feed", sum(s.possible_frozen_feed for s in results))
         except Exception as exc:
             st.error(f"Live capture failed: {exc}")
