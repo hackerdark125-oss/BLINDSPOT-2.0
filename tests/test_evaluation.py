@@ -65,3 +65,15 @@ def test_benchmark_latency_is_counted_once_per_sampled_frame():
         {"frame_index": "3", "Inference (ms)": "40.0"},
     ]
     assert extract_frame_inference_times(rows) == [20.0, 40.0]
+
+@pytest.mark.parametrize("bad_timing", [float("nan"), float("inf")])
+def test_rejects_non_finite_inference_timing(bad_timing):
+    with pytest.raises(ValueError):
+        evaluate_tracking([], [], inference_times_ms=[bad_timing])
+
+
+def test_rejects_non_finite_box_coordinates():
+    bad = row(0, 1)
+    bad["x"] = float("nan")
+    with pytest.raises(ValueError):
+        evaluate_tracking([bad], [])
