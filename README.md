@@ -68,7 +68,7 @@ See [VALIDATION.md](VALIDATION.md) for the full automated and real-camera releas
 
 ## Modern AI object detection and tracking
 
-The **AI object detection & tracking** mode uses Ultralytics YOLO11 (nano or small model) for object detection and ByteTrack for persistent multi-object IDs across sampled video frames. Choose target classes, confidence threshold, inference image size, and frame stride. The dashboard renders annotated frames, summarizes detections by class, and exports timestamped bounding boxes, class labels, confidence scores, and track IDs to CSV.
+The **AI object detection & tracking** mode uses Ultralytics YOLO11 (nano or small model) for object detection and ByteTrack for persistent multi-object IDs across sampled video frames. Choose target classes, confidence threshold, inference image size, and frame stride. The dashboard renders annotated frames, summarizes detections by class, and exports timestamped bounding boxes, class labels, confidence scores, and track IDs to CSV. The **AI live webcam / RTSP** mode applies the same detector and tracker to a bounded live capture window, with per-frame timestamps, detections, and downloadable CSV reports. Live processing runs on the machine hosting Streamlit; it is not browser-side camera access.
 
 This feature is optional to keep the base app and CI lightweight. Install its dependencies with:
 
@@ -105,6 +105,7 @@ Each sampled frame is divided into a configurable grid. Every cell receives a he
 - [x] Baseline pedestrian detection and short-term centroid tracking
 - [x] Optional YOLO11 detection across all 80 COCO classes with ByteTrack IDs
 - [x] Quantitative detection/tracking evaluator and per-frame processing benchmark tooling
+- [x] Bounded live webcam / RTSP YOLO11 + ByteTrack tracking
 - [ ] Scene-change-aware activity baselines and robust camera-motion compensation
 - [ ] Multi-camera time synchronisation and validated 3D coverage reconstruction
 - [ ] Geometric multi-camera coverage estimation using camera pose / visual localisation
