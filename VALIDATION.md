@@ -80,3 +80,16 @@ Before calling the project field-validated, attach:
 ## Completion definition
 
 The repository can be considered **software-complete for its documented prototype scope** when automated checks pass and the dashboard workflows run. It should only be described as **field-validated** after the real-camera checks and measured benchmarks above have been completed and recorded. There is no honest universal 100% score for an open-ended computer-vision system.
+
+
+## 6.1 Quantitative YOLO/ByteTrack benchmark
+
+- [ ] Label a representative clip with stable object IDs and COCO class IDs.
+- [ ] Export predictions with original frame indices and pixel-space boxes.
+- [ ] Ensure ground-truth and prediction CSVs cover identical sampled frame indices.
+- [ ] Run `python scripts/benchmark_tracking.py --ground-truth ground_truth.csv --predictions predictions.csv --output benchmark.json`.
+- [ ] Record precision, recall, F1, mean matched IoU, false positives, false negatives, and ID switches.
+- [ ] Measure inference latency separately on the target machine and record the hardware, model size, image size, and frame stride.
+- [ ] Repeat in daylight, low light, crowded scenes, and partial occlusion; keep each condition's result separate.
+
+The included evaluator uses greedy class-aware IoU matching and counts ID changes only on consecutive frame indices. It is not a replacement for a full MOT benchmark. Do not claim field accuracy without labelled footage and repeatable measurements.
