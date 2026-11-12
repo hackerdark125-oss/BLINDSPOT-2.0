@@ -200,6 +200,7 @@ def rectify_and_compute_depth(
     stereo: StereoCalibration,
     num_disparities: int = 128,
     block_size: int = 5,
+    left_right_consistency_threshold: float = 1.5,
 ) -> StereoDepthResult:
     """Rectify a calibrated stereo pair and estimate disparity/depth with SGBM.
 
@@ -225,6 +226,8 @@ def rectify_and_compute_depth(
         raise ValueError("num_disparities must be a positive multiple of 16")
     if isinstance(block_size, bool) or not isinstance(block_size, int) or block_size < 3 or block_size % 2 == 0:
         raise ValueError("block_size must be an odd integer >= 3")
+    if not np.isfinite(left_right_consistency_threshold) or left_right_consistency_threshold <= 0:
+        raise ValueError("left_right_consistency_threshold must be positive and finite")
 
     matrix_a = np.asarray(intrinsics_a.camera_matrix, dtype=np.float64)
     dist_a = np.asarray(intrinsics_a.distortion_coefficients, dtype=np.float64)
@@ -253,8 +256,7 @@ def rectify_and_compute_depth(
     gray_a = cv2.cvtColor(rectified_a, cv2.COLOR_BGR2GRAY) if rectified_a.ndim == 3 else rectified_a
     gray_b = cv2.cvtColor(rectified_b, cv2.COLOR_BGR2GRAY) if rectified_b.ndim == 3 else rectified_b
 
-    matcher = cv2.StereoSGBM_create(
-        minDisparity=0,
+    matcher_options = dict(
         numDisparities=num_disparities,
         blockSize=block_size,
         P1=8 * block_size * block_size,
@@ -265,8 +267,29 @@ def rectify_and_compute_depth(
         speckleRange=2,
         mode=cv2.STEREO_SGBM_MODE_SGBM_3WAY,
     )
-    disparity = matcher.compute(gray_a, gray_b).astype(np.float32) / 16.0
-    valid = np.isfinite(disparity) & (disparity > 0)
+    matcher_left = cv2.StereoSGBM_create(minDisparity=0, **matcher_options)
+    matcher_right = cv2.StereoSGBM_create(
+        minDisparity=-num_disparities, **matcher_options
+    )
+    disparity = matcher_left.compute(gray_a, gray_b).astype(np.float32) / 16.0
+    disparity_right = matcher_right.compute(gray_b, gray_a).astype(np.float32) / 16.0
+
+    # Explicit left-right consistency rejects occlusions and many mismatches.
+    # For left pixel x with disparity d, its corresponding right pixel is x-d.
+    height, width = disparity.shape
+    x_coordinates = np.broadcast_to(np.arange(width, dtype=np.int32), (height, width))
+    right_x = np.rint(x_coordinates - disparity).astype(np.int32)
+    in_bounds = (right_x >= 0) & (right_x < width)
+    sampled_right = np.full(disparity.shape, np.nan, dtype=np.float32)
+    rows = np.broadcast_to(np.arange(height, dtype=np.int32)[:, None], disparity.shape)
+    sampled_right[in_bounds] = disparity_right[rows[in_bounds], right_x[in_bounds]]
+    valid = (
+        np.isfinite(disparity)
+        & (disparity > 0)
+        & np.isfinite(sampled_right)
+        & (sampled_right < 0)
+        & (np.abs(disparity + sampled_right) <= left_right_consistency_threshold)
+    )
     points_3d = cv2.reprojectImageTo3D(disparity, q_matrix)
     depth = points_3d[:, :, 2].astype(np.float32)
     valid &= np.isfinite(depth) & (depth > 0)
