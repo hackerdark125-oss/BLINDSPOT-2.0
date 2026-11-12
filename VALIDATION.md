@@ -235,3 +235,15 @@ The included evaluator uses greedy class-aware IoU matching and counts ID change
 - [ ] Download the fused PLY and summary JSON; verify vertex count and coordinate alignment in a point-cloud viewer.
 - [ ] Try duplicate filenames, missing pose entries, invalid rotations, truncated binary PLY input, and unsupported list-valued vertex properties; confirm clear validation errors.
 - [ ] Compare overlapping geometry against a measured reference before claiming reconstruction accuracy.
+
+
+## 6.6 Visual loop-closure candidate retrieval
+
+- [ ] Run the stereo odometry workflow on a route with a deliberate revisit and inspect the candidate table.
+- [ ] Confirm candidates are separated by the configured temporal gap and report feature matches, geometric inliers, inlier ratio, and verification model.
+- [ ] Repeat on a route with no revisit and record false candidate rate; tune thresholds only against labelled sequences.
+- [ ] Verify a candidate independently before entering a measured world-frame translation constraint.
+- [ ] Confirm candidate retrieval never changes the trajectory or applies a pose-graph constraint by itself.
+- [ ] Test low-texture, repeated-pattern, moving-object, lighting-change, and planar-scene footage.
+- [ ] Do not describe a candidate as a confirmed loop closure or metric pose estimate.
+

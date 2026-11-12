@@ -49,8 +49,10 @@ Do not publish a field-accuracy or safety claim without this evidence.
   XYZRGB vertex properties; list-valued vertex properties are not supported.
 - Synthetic benchmarks measure software throughput on the runner, not real
   camera accuracy or target-machine performance.
-- Automatic loop-closure detection and full 6DoF pose-graph optimisation remain
-  future work; the current correction uses manually verified translation constraints.
+- Visual loop-closure candidate retrieval uses ORB matching and RANSAC geometry,
+  but it does not generate metric pose constraints or confirm a loop automatically.
+  Full 6DoF pose-graph optimisation remains future work; current correction uses
+  manually verified translation constraints.
 
 ## Release procedure
 
