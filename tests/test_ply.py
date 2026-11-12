@@ -38,3 +38,35 @@ def test_read_ascii_ply_supports_bytes_and_empty_cloud():
 def test_read_ascii_ply_rejects_invalid_inputs(content, message):
     with pytest.raises(ValueError, match=message):
         read_ascii_ply(content)
+
+
+
+@pytest.mark.parametrize("encoding, byte_order", [
+    ("binary_little_endian", "<"),
+    ("binary_big_endian", ">"),
+])
+def test_read_ply_supports_binary_and_reordered_extra_properties(encoding, byte_order):
+    import struct
+
+    header = (
+        f"ply\nformat {encoding} 1.0\nelement vertex 2\n"
+        "property uchar blue\nproperty float z\nproperty uchar red\n"
+        "property float x\nproperty uchar green\nproperty float y\n"
+        "property float intensity\nend_header\n"
+    ).encode("ascii")
+    row = byte_order + "BfBfBff"
+    payload = struct.pack(row, 30, 3.0, 10, 1.0, 20, 2.0, 0.5)
+    payload += struct.pack(row, 60, 6.0, 40, 4.0, 50, 5.0, 0.7)
+    points = read_ascii_ply(header + payload)
+    assert np.allclose(points, [[1, 2, 3, 10, 20, 30], [4, 5, 6, 40, 50, 60]])
+
+
+def test_read_ply_rejects_truncated_binary_vertex_data():
+    content = (
+        b"ply\nformat binary_little_endian 1.0\nelement vertex 1\n"
+        b"property float x\nproperty float y\nproperty float z\n"
+        b"property uchar red\nproperty uchar green\nproperty uchar blue\n"
+        b"end_header\n\x00\x00"
+    )
+    with pytest.raises(ValueError, match="fewer vertex bytes"):
+        read_ascii_ply(content)
