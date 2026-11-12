@@ -82,3 +82,10 @@ def test_camera_motion_compensation_can_be_disabled():
     tracker.update(frame, 0.0)
     result = tracker.update(frame, 1.0)
     assert not result.camera_motion_compensated
+
+
+def test_motion_preprocessing_preserves_frame_aspect_ratio():
+    tracker = MotionFreshnessTracker(grid_size=4, camera_motion_compensation=False)
+    wide = np.zeros((100, 200), dtype=np.uint8)
+    processed = tracker._gray(wide)
+    assert processed.shape[1] == 2 * processed.shape[0]
