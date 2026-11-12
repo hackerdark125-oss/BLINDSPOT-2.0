@@ -126,3 +126,23 @@ Python · OpenCV · NumPy · Pandas · Plotly · Streamlit · Pytest · GitHub A
 
 ## License
 MIT
+
+## Quantitative detection and tracking benchmark
+
+The benchmark utility compares YOLO/ByteTrack predictions with manually labelled ground truth. It reports precision, recall, F1, false positives/negatives, mean matched IoU, consecutive-frame ID switches, and optional latency-derived FPS. Metrics are meaningful only when labels are accurate and both CSV files use the same sampled frame indices.
+
+Create ground-truth and prediction CSV files with this header:
+
+```csv
+frame_index,track_id,class_id,x,y,width,height
+```
+
+Each row represents one object box. Keep the same ground-truth track ID for the same real object across frames. Coordinates are pixel-space top-left X/Y and box width/height. Frame indices refer to original video frame numbers.
+
+Run the evaluator:
+
+```bat
+python scripts/benchmark_tracking.py --ground-truth ground_truth.csv --predictions predictions.csv --output benchmark.json --iou 0.5
+```
+
+Matching uses greedy class-aware IoU. ID switches count only when an object is matched to a different predicted ID on the immediately following frame index. This is a project diagnostic, not a full MOTChallenge/HOTA/IDF1 implementation. Do not infer FPS from video duration; measure inference latency directly.
