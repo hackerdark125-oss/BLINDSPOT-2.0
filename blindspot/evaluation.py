@@ -6,6 +6,7 @@ Ground-truth and prediction files must describe the same sampled frame indices.
 from __future__ import annotations
 
 from collections import defaultdict
+from math import isfinite
 from typing import Iterable, Mapping, Any
 
 
@@ -30,6 +31,8 @@ def _normalise(rows: Iterable[Mapping[str, Any]], label: str) -> list[dict[str, 
             raise ValueError(f"{label} row {row_number} contains an invalid numeric value") from exc
         if item["frame_index"] < 0 or item["class_id"] < 0:
             raise ValueError(f"{label} row {row_number} has a negative frame or class ID")
+        if not all(isfinite(item[key]) for key in ("x", "y", "width", "height")):
+            raise ValueError(f"{label} row {row_number} has a non-finite bounding-box value")
         if item["width"] <= 0 or item["height"] <= 0:
             raise ValueError(f"{label} row {row_number} has a non-positive bounding-box size")
         normalised.append(item)
@@ -52,7 +55,7 @@ def evaluate_tracking(
     inference_times_ms: Iterable[float] | None = None,
 ) -> dict[str, Any]:
     """Compute greedy class-aware detection metrics and consecutive-frame ID switches."""
-    if not 0.0 < iou_threshold <= 1.0:
+    if not isfinite(iou_threshold) or not 0.0 < iou_threshold <= 1.0:
         raise ValueError("iou_threshold must be greater than 0 and at most 1")
     gt = _normalise(ground_truth, "ground truth")
     pred = _normalise(predictions, "prediction")
@@ -101,7 +104,7 @@ def evaluate_tracking(
     if inference_times_ms is not None:
         for value in inference_times_ms:
             timing = float(value)
-            if timing <= 0:
+            if not isfinite(timing) or timing <= 0:
                 raise ValueError("inference times must be positive milliseconds")
             timings.append(timing)
     mean_latency = sum(timings) / len(timings) if timings else None
