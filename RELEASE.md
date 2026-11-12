@@ -14,7 +14,7 @@ commit:
 2. Complete unit-test suite.
 3. Synthetic multi-camera fusion benchmark smoke test.
 4. Streamlit health-endpoint startup check.
-5. Docker image build.
+5. Docker image build and container startup/health-endpoint smoke test.
 
 Keep the workflow URL and commit SHA with the release record.
 
