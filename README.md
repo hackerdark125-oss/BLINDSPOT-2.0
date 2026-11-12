@@ -231,3 +231,10 @@ The **Stereo visual odometry & 3D fusion** dashboard mode accepts two synchroniz
 Open **Camera calibration → Uncertainty calibration**. Upload two separate CSV files, each containing `predicted_confidence,outcome`: one for fitting and one for held-out evaluation. The dashboard fits isotonic regression only on the training file, then reports Brier score, log loss, ECE, and reliability bins before and after calibration on the held-out file. It can export the fitted mapping and a CSV containing calibrated held-out scores.
 
 Do not feed the existing 0–100 image-quality heuristic directly into this probability calibrator. It must first be converted into a meaningful confidence estimate with independently labelled outcomes, and any conversion must be evaluated without data leakage. Better calibration metrics are not guaranteed; report the held-out results even when calibration makes them worse.
+
+- Optional YOLO-based dynamic-object masking for stereo visual odometry and point-cloud fusion (requires `requirements-ai.txt`)
+
+
+### Dynamic-object masking for 3D fusion
+
+In **Camera calibration → Stereo visual odometry & 3D fusion**, enable **Mask detected moving objects before 3D fusion** to run the optional YOLO detector on each rectified left-camera frame. Detected bounding boxes (with an 8-pixel margin) are excluded from the stereo depth mask used for point-cloud export and from ORB feature extraction in the previous frame used by PnP-RANSAC. Install the optional AI dependencies with `python -m pip install -r requirements-ai.txt`. This reduces contamination from detected moving objects but is not semantic scene understanding: missed detections, false positives, and partial occlusions remain possible. The default mode remains dependency-free and unchanged.

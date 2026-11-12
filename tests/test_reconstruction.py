@@ -82,3 +82,33 @@ def test_stereo_visual_odometry_rejects_depth_shape_mismatch():
     frame = np.zeros((20, 20), dtype=np.uint8)
     with pytest.raises(ValueError, match="match the previous frame"):
         estimate_stereo_visual_motion(frame, frame, np.ones((10, 10)), np.eye(3))
+
+
+def test_exclude_detection_regions_masks_boxes_with_padding_and_clipping():
+    from blindspot.reconstruction import exclude_detection_regions
+
+    valid = np.ones((10, 12), dtype=bool)
+    masked = exclude_detection_regions(valid, [(2, 3, 4, 3)], padding=1)
+    assert masked.sum() == valid.sum() - (6 * 6)
+    assert not masked[2:7, 1:7].any()
+    assert valid.all()  # input mask is not mutated
+
+
+def test_exclude_detection_regions_clips_boxes_at_image_edges():
+    from blindspot.reconstruction import exclude_detection_regions
+
+    valid = np.ones((5, 5), dtype=bool)
+    masked = exclude_detection_regions(valid, [(-3, -2, 5, 4)], padding=1)
+    assert not masked[:3, :3].any()
+    assert masked[4, 4]
+
+
+def test_exclude_detection_regions_validates_inputs():
+    from blindspot.reconstruction import exclude_detection_regions
+
+    with pytest.raises(ValueError, match="boolean"):
+        exclude_detection_regions(np.ones((4, 4), dtype=np.uint8), [])
+    with pytest.raises(ValueError, match="positive"):
+        exclude_detection_regions(np.ones((4, 4), dtype=bool), [(1, 1, 0, 2)])
+    with pytest.raises(ValueError, match="padding"):
+        exclude_detection_regions(np.ones((4, 4), dtype=bool), [], padding=-1)

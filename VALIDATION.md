@@ -1,181 +1,240 @@
-# BLINDSPOT 2.0 — Release Validation Checklist
+# BLINDSPOT 2.0
+### Visual Uncertainty Intelligence System
 
-This checklist separates automated software checks from tests that require real camera footage. A passing CI run does not prove detection accuracy, calibration quality, or safe operation.
+BlindSpot 2.0 is an experimental computer-vision research prototype that highlights regions with weak image-quality signals and tracks motion activity over time. It supports recorded footage and bounded live camera capture.
 
-## 1. Automated checks
+> **Important:** confidence scores are heuristic image-quality indicators, not calibrated probabilities, semantic scene understanding, or proof that an area is visible.
 
-Run from the repository root:
+## Features
+- Analyse up to four recorded camera videos in one session
+- Align multi-camera sample timestamps with manual per-camera offsets and a configurable skew tolerance
+- Bounded live capture from a local webcam or RTSP/HTTP(S) stream
+- Configurable OpenCV sampling interval and frame limit
+- Per-cell image-quality confidence heatmaps
+- Brightness, contrast, sharpness, and edge-density metrics
+- Confidence and uncertainty trends over time
+- Dense optical-flow motion maps using Farneback
+- ORB/RANSAC global camera-motion compensation with conservative fallback when feature matches are weak
+- Histogram-based scene-change detection that resets motion history to avoid false activity spikes
+- Per-grid-cell time-since-motion activity maps
+- Repeated-frame diagnostic for potentially frozen feeds
+- Built-in HOG pedestrian detection with temporary centroid-based track IDs
+- Optional YOLO11 object detection with persistent ByteTrack IDs for people, cars, motorcycles, buses, trucks, and other COCO classes
+- Annotated sampled video frames and per-detection CSV export
+- Chessboard-based camera intrinsic and lens-distortion calibration
+- Paired chessboard stereo calibration for relative camera rotation and translation
+- Planar two-camera ground-footprint and overlap estimation from calibrated stereo pose
+- Stereo rectification, SGBM disparity estimation, and depth-map CSV export
+- CSV-based stereo-depth benchmark CLI for MAE, RMSE, relative error, and valid-pixel coverage
+- Calibration JSON export and undistortion preview
+- Weak-region prioritisation, multi-camera comparison, and CSV exports
+- Per-cell quality-score label template and human-agreement benchmark (MAE, RMSE, bias, Pearson/Spearman, score bins)
+- Unit tests and GitHub Actions CI
 
+## Windows setup
 ```bat
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-python -m compileall -q app.py blindspot tests
-python -m pytest -q
 streamlit run app.py
 ```
+Open the local URL printed by Streamlit, usually http://localhost:8501.
 
-Release gate:
-- [ ] Python compilation succeeds.
-- [ ] All unit tests pass.
-- [ ] Docker image builds successfully.
-- [ ] Streamlit dashboard opens without startup errors.
+## Live camera mode
+1. Select **Live webcam / RTSP** in the dashboard.
+2. For a local webcam, enter camera index `0` (try `1` for another camera).
+3. For a network camera, enter its RTSP URL, for example `rtsp://camera-host/stream`.
+4. Select a capture duration and click **Start live analysis**.
 
-## 2. Recorded-video analysis
+Live capture runs on the machine hosting the Streamlit process. A remotely hosted dashboard cannot automatically access a camera attached to your personal computer. Network stream URLs should be kept private and must not be committed to Git.
 
-Use at least two short videos with different lighting and scene content.
+## Camera calibration
+1. Select **Camera calibration** in the dashboard.
+2. Upload at least three photos of the same chessboard from varied positions and angles (more varied views are better).
+3. Enter the number of inner corner intersections and the real-world square size.
+4. Run calibration, review the reprojection RMS, and download the JSON parameters.
 
-- [ ] Upload MP4/AVI/MOV footage and confirm sampling completes.
-- [ ] Confirm confidence, uncertainty, motion plots, and heatmaps render.
-- [ ] Confirm frame reports include camera-motion compensation and scene-change diagnostic flags.
-- [ ] Download the CSV and check timestamps and numeric columns.
-- [ ] Upload a second camera clip and confirm camera comparison is shown.
-- [ ] Set a known time offset for each camera and confirm synchronized sample groups are exported only within the configured skew tolerance.
-- [ ] Confirm each matched sample index is used at most once per non-reference camera.
-- [ ] Try an invalid or corrupt file and confirm the app reports an error without crashing.
+All images must have the same resolution. A lower reprojection error is generally preferable, but it is not by itself proof of good calibration.
 
-## 3. Live camera
+For **Two-camera stereo extrinsics**, first calibrate each camera separately and upload both JSON files. Then upload synchronized paired chessboard photos in matching order: each pair must show the same rigid board pose from both cameras. The stereo workflow estimates relative rotation, translation, essential matrix, and fundamental matrix. Translation uses the same unit as the chessboard square size. Both cameras must have matching image dimensions and board geometry. The recorded-video dashboard can also align sampled timelines using manual offsets and a skew tolerance; this is timestamp matching, not hardware synchronization.
 
-- [ ] Test the local webcam at index 0 (try 1 if multiple cameras are attached).
-- [ ] Confirm capture ends at the configured duration.
-- [ ] Cover and uncover the lens to check that the repeated-frame warning is only a diagnostic.
-- [ ] Pan the camera across a textured static scene and check that global motion compensation reduces broad false motion where ORB matches are reliable.
-- [ ] Cut between visually different scenes and confirm the motion history resets rather than showing a large cut-induced flow spike.
-- [ ] Test a network stream only on a trusted network; do not commit credentials or RTSP URLs.
+For **Planar coverage preview**, upload both intrinsics JSON files, the stereo extrinsics JSON, and a camera A-to-world pose JSON. The pose JSON contains a 3x3 rotation_matrix and 3D translation_vector, using the convention X_world = R × X_camera + t. OpenCV camera axes are X right, Y down, Z forward; define the world Z axis as vertical and keep all translations and plane heights in the same unit as the stereo baseline. The tool derives camera B's world pose from the stereo transform and projects each image's four corner rays onto a horizontal plane. It reports each footprint area, overlap, union, and a rasterized 0/1/2-camera coverage grid. All four corner rays must intersect the plane in front of each camera. This is a planar geometric estimate only: it does not infer camera pose, reconstruct arbitrary 3D surfaces, account for occluders, or prove image visibility.
 
-## 4. Pedestrian detection and tracking
+For **Stereo depth preview**, upload both intrinsic JSON files, the stereo extrinsics JSON, and a synchronized image pair from the calibrated cameras. The app rectifies the pair, estimates disparity with StereoSGBM, and reprojects disparity into a depth map. Depth units follow the chessboard square-size unit. Depth quality depends on accurate calibration, fixed camera geometry, synchronization, texture, and visibility in both views; invalid pixels are expected around occlusions and low-texture regions. This is a prototype depth estimate, not a safety or measurement guarantee.
 
-Use a short clip containing several clearly visible, upright pedestrians.
+## Pedestrian detection and tracking
+Select **Person detection & tracking** and upload a short video. The app uses OpenCV's built-in HOG + linear SVM pedestrian detector and a nearest-centroid tracker to associate detections across sampled frames. It displays annotated frames and exports timestamps, temporary track IDs, bounding boxes, and detector scores as CSV. This classical detector targets upright pedestrians; it is not a general object detector and may miss small, occluded, distant, or unusual poses. Track IDs are local to one video and can switch after occlusion or abrupt movement.
 
-- [ ] Confirm bounding boxes are drawn around visible pedestrians.
-- [ ] Confirm a person moving slowly keeps the same track ID across adjacent sampled frames.
-- [ ] Confirm a newly entering person receives a new ID.
-- [ ] Process a second, unrelated clip and confirm track IDs start fresh rather than carrying over from the previous clip.
-- [ ] Confirm the CSV contains timestamps, IDs, bounding boxes, and detector scores.
-- [ ] Repeat with different distances, lighting, crowd density, and partial occlusion.
-- [ ] Record false positives and missed detections. HOG is a classical upright-person detector, not a modern general-purpose detector; poor performance in difficult scenes is an expected limitation.
+## Understanding motion activity age
+The motion tracker estimates global frame-to-frame camera motion from ORB feature matches and a RANSAC affine transform, aligns the previous frame, then measures residual dense optical flow with Farneback. If there are too few reliable matches, it falls back to unaligned optical flow. A grayscale histogram change detector resets motion history after likely scene cuts instead of reporting a misleading large motion spike. The dashboard report records whether compensation was applied and whether a scene change was detected. These are approximate image-space diagnostics, not visual odometry, camera pose, or proof of object motion. Each grid cell stores residual flow magnitude and elapsed time since it last exceeded a configurable threshold.
 
-## 5. Single-camera calibration
+**Activity age is not observation freshness.** A perfectly static scene can have a high activity age even while the camera is operating correctly. Camera movement, lighting changes, compression artefacts, and sampling interval can affect optical-flow values. Use these maps as diagnostics for human review, not as proof that an area is unseen or stale.
 
-- [ ] Capture 10–20 chessboard photos at varied positions, distances, and tilts.
-- [ ] Keep resolution and focus fixed.
-- [ ] Run calibration and save the JSON.
-- [ ] Inspect reprojection RMS and compare original/undistorted previews.
-- [ ] Re-run with a different set of photos and check that results are reasonably consistent.
+## Release validation
+See [VALIDATION.md](VALIDATION.md) for the full automated and real-camera release checklist, including pedestrian detection, calibration, stereo depth, and benchmark evidence.
 
-## 6. Stereo calibration and depth
+## Modern AI object detection and tracking
 
-- [ ] Calibrate both cameras individually at the same image resolution.
-- [ ] Capture synchronized chessboard pairs at varied board poses.
-- [ ] Keep the stereo camera rig rigid after calibration.
-- [ ] Confirm stereo calibration exports rotation and translation.
-- [ ] Capture a textured scene with both cameras at the same time.
-- [ ] Place a flat target at a measured distance and compare estimated depth with the known distance.
-- [ ] Repeat at multiple distances and document median absolute error and invalid-pixel percentage.
-- [ ] Record one row per measured target with known distance, median valid depth, valid-pixel count, total-pixel count, and consistent units.
-- [ ] Run `python scripts/benchmark_depth.py --input depth_samples.csv --output depth_benchmark.json` and archive the JSON report.
-- [ ] Do not use the depth estimate for navigation, flight control, or safety decisions.
+The **AI object detection & tracking** mode uses Ultralytics YOLO11 (nano or small model) for object detection and ByteTrack for persistent multi-object IDs across sampled video frames. Choose target classes, confidence threshold, inference image size, and frame stride. The dashboard renders annotated frames, summarizes detections by class, and exports timestamped bounding boxes, class labels, confidence scores, and track IDs to CSV.
 
-## 6.2 Image-quality score agreement benchmark
+This feature is optional to keep the base app and CI lightweight. Install its dependencies with:
 
-- [ ] Export the per-cell quality-label template from the dashboard.
-- [ ] Fill `reference_score` using a documented human rubric; label cells without seeing the model score where practical to reduce bias.
-- [ ] Keep the same scoring rubric across lighting, distance, blur, exposure, and scene conditions.
-- [ ] Run `python scripts/benchmark_quality.py --input quality_labels.csv --output quality_benchmark.json`.
-- [ ] Record sample count, MAE, RMSE, bias, correlations, and score-bin summaries for each condition.
-- [ ] Do not call the score calibrated or validated until it has been evaluated on a separate held-out labelled set.
+```bash
+pip install -r requirements-ai.txt
+```
 
-Timestamp alignment uses manual offsets and nearest-neighbour matching. It is not hardware time synchronization and does not establish geometric overlap.
+The first run downloads the selected pretrained weights and requires internet access. The nano model is the recommended starting point for CPU testing; the small model may improve accuracy at higher compute cost. YOLO/ByteTrack results are not guaranteed: evaluate on representative footage, check ID switches and missed detections, and measure FPS on the target hardware. Track IDs can change after occlusion or scene cuts. This is a research prototype, not a safety-critical perception system.
 
-## 6.3 Planar two-camera coverage preview
+## Deployment
+See [DEPLOYMENT.md](DEPLOYMENT.md) for Docker and Streamlit Community Cloud instructions. The repository includes a Dockerfile and a dark Streamlit theme.
 
-- [ ] Calibrate both cameras individually and run paired stereo calibration.
-- [ ] Provide camera A's camera-to-world rotation and translation in the same coordinate frame and distance unit as the stereo baseline.
-- [ ] Confirm world Z is vertical and the selected horizontal plane is below both cameras.
-- [ ] Generate the planar footprint/overlap map and export its JSON and CSV outputs.
-- [ ] Compare polygon boundaries and overlap area with a measured, unobstructed test layout.
-- [ ] Repeat with changed camera spacing and orientation; record the pose source and all units.
+## Run tests
+```bat
+python -m pytest -q
+```
+GitHub Actions runs the same test command on pushes and pull requests.
 
-The planar estimator intersects image-corner rays with one known plane. It does not model occlusion, arbitrary 3D geometry, or semantic visibility; it is not a full 3D coverage reconstruction.
+## How the image-quality score works
+Each sampled frame is divided into a configurable grid. Every cell receives a heuristic score from exposure balance, local contrast, Laplacian sharpness, and Canny edge density. Scores range from 0 to 100; low-scoring cells are prioritised for human review. This is not a trained AI model or calibrated probability.
 
-## 7. Release evidence
+## Roadmap
+- [x] Recorded video ingestion and frame sampling
+- [x] Explainable local image-quality maps
+- [x] Multi-video dashboard and comparison
+- [x] Confidence/uncertainty trends and CSV exports
+- [x] Live webcam / network-stream capture
+- [x] Repeated-frame / possible-freeze diagnostics
+- [x] Dense optical-flow maps and per-cell motion activity age
+- [x] Chessboard-based single-camera intrinsic calibration and undistortion preview
+- [x] Paired chessboard stereo extrinsic calibration
+- [x] Stereo rectification, disparity estimation, and depth-map export
+- [x] Input validation, unit tests, and CI
+- [x] Baseline pedestrian detection and short-term centroid tracking
+- [x] Optional YOLO11 detection across all 80 COCO classes with ByteTrack IDs
+- [x] Quantitative detection/tracking evaluator and per-frame processing benchmark tooling
+- [x] Scene-change resets and ORB/RANSAC global camera-motion compensation for motion diagnostics
+- [x] Multi-camera timestamp alignment utility and dashboard export (manual offsets; no hardware sync guarantee)
+- [x] Planar two-camera ground-footprint and overlap estimator using supplied camera pose
+- [ ] Visual-localisation-based pose estimation and validated 3D coverage reconstruction
+- [ ] Geometric multi-camera coverage estimation using camera pose / visual localisation
+- [x] Quality-score agreement evaluator and per-cell human-label export tooling
+- [ ] Validated uncertainty model and representative benchmark dataset
+- [x] Quantitative stereo-depth benchmark evaluator and CLI for known-distance samples
 
-Before calling the project field-validated, attach:
-- CI run link and test count.
-- Example input clips and anonymized output screenshots.
-- Camera models, resolutions, frame rates, and lighting conditions.
-- Calibration board dimensions and measured square size.
-- Stereo baseline and measured target distances.
-- Detection precision/recall from manually labelled footage.
-- Depth error summary across measured distances.
+## Limitations and safety
+- Image-quality and motion maps are diagnostics, not measurements of physical-world visibility or 3D coverage.
+- Planar coverage uses supplied calibration and camera pose; it does not infer pose or reconstruct arbitrary 3D scene geometry.
+- Texture and edge density do not guarantee useful semantic information.
+- Static scenes may show high activity age; repeated frames do not alone prove camera failure.
+- Results are decision-support signals only. Do not use this prototype for flight control, navigation, targeting, or safety-critical inspection.
+- No claim of novelty or operational readiness is made.
 
-## Completion definition
+## Tech stack
+Python · OpenCV · NumPy · Pandas · Plotly · Streamlit · Pytest · GitHub Actions · Docker
 
-The repository can be considered **software-complete for its documented prototype scope** when automated checks pass and the dashboard workflows run. It should only be described as **field-validated** after the real-camera checks and measured benchmarks above have been completed and recorded. There is no honest universal 100% score for an open-ended computer-vision system.
+## References
+- [OpenCV dense optical flow tutorial](https://docs.opencv.org/4.x/d4/dee/tutorial_optical_flow.html)
+- [OpenCV Farneback optical-flow API](https://docs.opencv.org/4.x/dc/d6b/group__video__track.html)
 
+## License
+MIT
 
-## 6.1 Quantitative YOLO/ByteTrack benchmark
+## Image-quality score evaluation
 
-- [ ] Label a representative clip with stable object IDs and COCO class IDs.
-- [ ] Export predictions with original frame indices and pixel-space boxes, plus the separate per-frame performance CSV (including zero-detection frames).
-- [ ] Ensure ground-truth and prediction CSVs cover identical sampled frame indices.
-- [ ] Run `python scripts/benchmark_tracking.py --ground-truth ground_truth.csv --predictions predictions.csv --timings blindspot_ai_frame_performance.csv --output benchmark.json`.
-- [ ] Record precision, recall, F1, mean matched IoU, false positives, false negatives, and ID switches.
-- [ ] Measure inference latency separately on the target machine and record the hardware, model size, image size, and frame stride.
-- [ ] Repeat in daylight, low light, crowded scenes, and partial occlusion; keep each condition's result separate.
+The app can export a per-cell CSV template containing the heuristic `predicted_score` and an empty `reference_score` column. Review cells using a consistent human rubric (for example, 0 = unusable image detail and 100 = excellent usable detail), fill the reference scores, then run:
 
-The quality-score benchmark measures agreement with supplied human labels; it does not establish probabilistic calibration or generalisation without a held-out dataset.
+```bat
+python scripts/benchmark_quality.py --input quality_labels.csv --output quality_benchmark.json
+```
 
-The depth benchmark is only as reliable as the manually measured target distances and selected target regions. It reports error metrics but does not establish general depth accuracy.
+The report compares score agreement using MAE, RMSE, mean bias, Pearson and Spearman correlation, and score-bin summaries. This evaluates agreement with the labels you provide; it does not make the score a probability or prove generalisation beyond the labelled scenes.
 
-The motion compensation and scene-change heuristics are approximate; feature-poor scenes fall back to raw optical flow, and false scene-change detections remain possible. They are not visual odometry or camera-pose estimates.
+## Stereo depth benchmark
 
-The included evaluator uses greedy class-aware IoU matching and counts ID changes only on consecutive evaluated samples. It is not a replacement for a full MOT benchmark. Do not claim field accuracy without labelled footage and repeatable measurements.
+The depth benchmark compares measured target distances with the median depth estimated from the corresponding target region. Create a CSV with one row per measured target/sample and these columns:
 
+```csv
+known_distance,measured_distance,valid_pixels,total_pixels,unit
+100,104,8500,10000,cm
+200,188,7600,10000,cm
+```
 
-## 6.4 3D point-cloud and visual-motion software validation
+Use the same distance unit for every row. If a target has no valid depth pixels, leave measured_distance empty and set valid_pixels to 0. Run:
 
-- [ ] Export a stereo depth map and matching camera intrinsics; convert it to PLY with `scripts/reconstruct_point_cloud.py`.
-- [ ] Confirm point count, coordinate units, and colour alignment in a point-cloud viewer.
-- [ ] Compare reconstructed points against measured targets at multiple distances and positions.
-- [ ] Check that invalid/zero depth pixels are omitted and that max-depth filtering behaves as configured.
-- [ ] Run the two-frame visual-motion estimator on textured footage with known camera movement; record inlier count and translation direction.
-- [ ] Do not interpret monocular translation direction as metric displacement or absolute camera position.
+```bat
+python scripts/benchmark_depth.py --input depth_samples.csv --output depth_benchmark.json
+```
 
-## 6.5 Uncertainty calibration software validation
+The report contains MAE, RMSE, median absolute error, mean absolute relative error, valid-pixel percentage, and counts of measured/skipped samples. This is an evaluation utility; it does not create measured results or validate a camera rig by itself.
 
-- [ ] Prepare independently reviewed binary outcomes and confidence values.
-- [ ] Split labelled samples into calibration/training and held-out evaluation sets before fitting.
-- [ ] Fit the isotonic mapping on the training split only.
-- [ ] Evaluate Brier score, log loss, ECE, and reliability bins on the held-out split.
-- [ ] Repeat across lighting, motion, distance, and scene categories; report sample counts.
-- [ ] Do not call the uncertainty output calibrated until held-out results support that claim.
+## Quantitative detection and tracking benchmark
 
+The benchmark utility compares YOLO/ByteTrack predictions with manually labelled ground truth. It reports precision, recall, F1, false positives/negatives, mean matched IoU, consecutive-sampled-frame ID switches, and per-sampled-frame YOLO+ByteTrack processing throughput. ByteTrack state is reset between separate video uploads so IDs do not leak from one clip into the next. The app exports an object-level AI tracking CSV and a separate per-frame performance CSV (including frames with zero detections). Use the object-level file as predictions and pass the performance file with --timings for an unbiased per-sampled-frame latency summary. Metrics are meaningful only when labels are accurate and both CSV files use the same sampled frame indices.
 
-## 6.6 Stereo visual odometry and fused 3D reconstruction
+Create ground-truth and prediction CSV files with this header:
 
-- [ ] Generate synchronized stereo depth maps for consecutive frames using fixed, calibrated cameras.
-- [ ] Estimate frame-to-frame motion with ORB correspondences and PnP-RANSAC using previous-frame depth.
-- [ ] Record inlier counts, inlier ratios, failed-frame rate, and processing time.
-- [ ] Chain relative poses into a common coordinate frame and inspect accumulated drift.
-- [ ] Fuse per-frame point clouds using the estimated camera-to-world poses; compare against a measured reference object/trajectory.
-- [ ] Repeat with moving objects, low texture, blur, lighting changes, and partial occlusion.
-- [ ] Treat this as local stereo visual odometry only; loop closure, global optimisation, relocalisation, and drift correction remain outside the current implementation.
+```csv
+frame_index,track_id,class_id,x,y,width,height
+```
 
+Each row represents one object box. Keep the same ground-truth track ID for the same real object across frames. Coordinates are pixel-space top-left X/Y and box width/height. Frame indices refer to original video frame numbers.
 
-## 6.7 Dashboard stereo visual odometry workflow
+Run the evaluator:
 
-- [ ] Upload two synchronized stereo videos recorded with the calibrated fixed camera rig.
-- [ ] Upload the matching camera A/B intrinsics and stereo extrinsics JSON files.
-- [ ] Confirm the videos use the calibrated resolution, camera order, and compatible frame rates.
-- [ ] Run a short clip first; review reconstructed/skipped pair counts and PnP inlier ratios.
-- [ ] Inspect the trajectory CSV and fused PLY in a point-cloud viewer.
-- [ ] Compare trajectory and reconstruction against independently measured ground truth before making accuracy claims.
+```bat
+python scripts/benchmark_tracking.py --ground-truth ground_truth.csv --predictions predictions.csv --timings blindspot_ai_frame_performance.csv --output benchmark.json --iou 0.5
+```
+
+Matching uses greedy class-aware IoU. ID switches count only when an object is matched to a different predicted ID on the immediately following evaluated sample (even when source frame indices skip due to sampling). This is a project diagnostic, not a full MOTChallenge/HOTA/IDF1 implementation. Do not infer FPS from video duration; measure per-frame YOLO+ByteTrack processing time directly.
 
 
-## 6.8 Held-out uncertainty calibration dashboard
+## 3D point-cloud reconstruction and visual motion
 
-- [ ] Prepare separate training and held-out CSV files with independently labelled binary outcomes.
-- [ ] Confirm confidence values represent probabilities in [0, 1], not raw 0–100 image-quality scores.
-- [ ] Fit the isotonic calibrator using training data only.
-- [ ] Compare Brier score, log loss, ECE, and reliability bins on held-out data before/after calibration.
-- [ ] Retain the held-out sample count and label-generation rubric with every report.
-- [ ] Repeat on different scenes, lighting, camera distances, and motion conditions; do not generalise from one split.
+The stereo depth pipeline can now be converted into a coloured 3D point cloud. Save a depth map as a 2D NumPy `.npy` array and provide the matching camera intrinsics JSON:
+
+```bash
+python scripts/reconstruct_point_cloud.py --depth depth.npy --intrinsics camera_calibration.json --output scene.ply --stride 2
+```
+
+The PLY file contains XYZ coordinates and RGB colour values and can be opened in common point-cloud viewers. Depth and translations retain the calibration distance unit. The point cloud is only as accurate as stereo calibration, synchronisation, depth estimates, and the supplied intrinsics. Invalid depth pixels are omitted.
+
+A two-frame ORB + essential-matrix visual-motion estimator is available as `blindspot.reconstruction.estimate_visual_motion`. It estimates relative rotation and translation direction from calibrated images. Monocular translation scale is fundamentally ambiguous; this is not globally corrected visual odometry, SLAM, or absolute localisation. A metric 3D scene requires stereo depth or another scale reference and measured validation.
+
+## Label-driven uncertainty calibration
+
+The new `blindspot.uncertainty` module evaluates probability-like confidence values against independently labelled binary outcomes. It reports Brier score, log loss, expected calibration error (ECE), and reliability bins, and fits a monotone isotonic mapping using the pool-adjacent-violators algorithm.
+
+Prepare a CSV with `predicted_confidence,outcome` columns, where confidence is in [0, 1] and outcome is 0 or 1:
+
+```bash
+python scripts/benchmark_uncertainty.py --train confidence_train.csv --eval confidence_heldout.csv --output uncertainty_calibration.json
+```
+
+The CLI requires separate training and held-out files: it fits the isotonic calibrator only on the training split and reports raw/calibrated metrics only on the held-out split. The existing image-quality heuristic score is not automatically a probability, and this framework does not make it calibrated without representative independent labels.
+
+
+## Stereo visual odometry and multi-frame point-cloud fusion
+
+The reconstruction module now includes a stereo visual-odometry step. It matches ORB features between adjacent frames, lifts previous-frame features into 3D using the corresponding stereo depth map, and estimates the previous-to-current camera transform with PnP-RANSAC. Unlike monocular essential-matrix motion, the translation can carry metric scale because it is anchored to the supplied depth map. Depth and translation use the same unit.
+
+Python API: `blindspot.reconstruction.estimate_stereo_visual_motion`. Chain successive relative transforms with `compose_camera_to_world_pose`, then use `fuse_point_clouds` to transform frame point clouds into a common world coordinate system. Optional voxel averaging reduces duplicate density.
+
+**Important limitations:** this is a frame-to-frame odometry building block, not a complete SLAM system. It does not perform loop closure, global bundle adjustment, relocalisation, dynamic-object masking, or drift correction. Pose errors accumulate over time; point-cloud fusion is only globally meaningful when supplied poses are accurate. Use calibrated stereo depth for every frame and independently measured reference trajectories before making localisation-accuracy claims.
+
+
+The **Stereo visual odometry & 3D fusion** dashboard mode accepts two synchronized stereo videos plus both intrinsics files and stereo extrinsics. It samples frame pairs, computes depth, estimates local metric camera motion with PnP-RANSAC, chains camera poses, and exports a fused PLY point cloud plus a trajectory CSV. The point cloud uses the rectified camera projection matrix returned by stereo rectification. The workflow is compute-intensive; start with short clips and a coarse point-cloud stride. Failed frame pairs are skipped and counted. Pose drift accumulates because this prototype does not implement loop closure or global optimisation.
+
+
+## Dashboard uncertainty calibration
+
+Open **Camera calibration → Uncertainty calibration**. Upload two separate CSV files, each containing `predicted_confidence,outcome`: one for fitting and one for held-out evaluation. The dashboard fits isotonic regression only on the training file, then reports Brier score, log loss, ECE, and reliability bins before and after calibration on the held-out file. It can export the fitted mapping and a CSV containing calibrated held-out scores.
+
+Do not feed the existing 0–100 image-quality heuristic directly into this probability calibrator. It must first be converted into a meaningful confidence estimate with independently labelled outcomes, and any conversion must be evaluated without data leakage. Better calibration metrics are not guaranteed; report the held-out results even when calibration makes them worse.
+
+- Optional YOLO-based dynamic-object masking for stereo visual odometry and point-cloud fusion (requires `requirements-ai.txt`)
+
+
+### Dynamic-object masking for 3D fusion
+
+In **Camera calibration → Stereo visual odometry & 3D fusion**, enable **Mask detected moving objects before 3D fusion** to run the optional YOLO detector on each rectified left-camera frame. Detected bounding boxes (with an 8-pixel margin) are excluded from the stereo depth mask used for point-cloud export and from ORB feature extraction in the previous frame used by PnP-RANSAC. Install the optional AI dependencies with `python -m pip install -r requirements-ai.txt`. This reduces contamination from detected moving objects but is not semantic scene understanding: missed detections, false positives, and partial occlusions remain possible. The default mode remains dependency-free and unchanged.
