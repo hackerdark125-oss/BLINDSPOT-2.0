@@ -70,3 +70,17 @@ def test_read_ply_rejects_truncated_binary_vertex_data():
     )
     with pytest.raises(ValueError, match="fewer vertex bytes"):
         read_ascii_ply(content)
+
+
+def test_read_ascii_ply_ignores_standard_trailing_face_element():
+    content = (
+        b"ply\nformat ascii 1.0\nelement vertex 3\n"
+        b"property float x\nproperty float y\nproperty float z\n"
+        b"property uchar red\nproperty uchar green\nproperty uchar blue\n"
+        b"element face 1\nproperty list uchar int vertex_indices\n"
+        b"end_header\n0 0 0 1 2 3\n1 0 0 4 5 6\n0 1 0 7 8 9\n"
+        b"3 0 1 2\n"
+    )
+    points = read_ascii_ply(content)
+    assert points.shape == (3, 6)
+    assert np.allclose(points[2], [0, 1, 0, 7, 8, 9])
