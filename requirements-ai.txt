@@ -1,0 +1,2 @@
+# Optional modern AI detection stack (not required for the core app or CI)
+ultralytics>=8.3,<9
