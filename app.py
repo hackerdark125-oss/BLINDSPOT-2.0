@@ -330,6 +330,7 @@ elif mode == "AI object detection & tracking":
                         observations.append({
                             "Frame index": result.frame_index,
                             "Time (s)": result.timestamp_seconds,
+                            "Inference (ms)": result.inference_time_ms,
                             "Track ID": item.track_id,
                             "Class": item.class_name,
                             "Class ID": item.class_id,
@@ -338,7 +339,7 @@ elif mode == "AI object detection & tracking":
                             "Width": item.width, "Height": item.height,
                         })
                 ai_df = pd.DataFrame(observations, columns=[
-                    "Frame index", "Time (s)", "Track ID", "Class", "Class ID", "Confidence",
+                    "Frame index", "Time (s)", "Inference (ms)", "Track ID", "Class", "Class ID", "Confidence",
                     "X", "Y", "Width", "Height",
                 ])
                 m1, m2, m3 = st.columns(3)
