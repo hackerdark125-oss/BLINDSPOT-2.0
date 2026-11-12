@@ -208,10 +208,10 @@ The new `blindspot.uncertainty` module evaluates probability-like confidence val
 Prepare a CSV with `predicted_confidence,outcome` columns, where confidence is in [0, 1] and outcome is 0 or 1:
 
 ```bash
-python scripts/benchmark_uncertainty.py --input labelled_confidence.csv --output uncertainty_calibration.json
+python scripts/benchmark_uncertainty.py --train confidence_train.csv --eval confidence_heldout.csv --output uncertainty_calibration.json
 ```
 
-Use the isotonic calibrator only after fitting on a training split; report final metrics on a separate held-out split. The existing image-quality heuristic score is not automatically a probability, and this framework does not make it calibrated without representative independent labels.
+The CLI requires separate training and held-out files: it fits the isotonic calibrator only on the training split and reports raw/calibrated metrics only on the held-out split. The existing image-quality heuristic score is not automatically a probability, and this framework does not make it calibrated without representative independent labels.
 
 
 ## Stereo visual odometry and multi-frame point-cloud fusion
