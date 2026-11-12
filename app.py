@@ -792,10 +792,15 @@ else:
                         "calibration, image synchronization, and scene texture."
                     )
                 else:
-                    m1, m2, m3 = st.columns(3)
+                    mean_confidence = float(np.mean(result.confidence_map[result.valid_mask]))
+                    m1, m2, m3, m4 = st.columns(4)
                     m1.metric("Valid depth pixels", f"{100*valid_count/total_count:.1f}%")
                     m2.metric("Median depth", f"{np.median(valid_depth):.2f} {result.translation_unit}")
                     m3.metric("Depth samples", f"{valid_count:,}")
+                    m4.metric("Mean relative confidence", f"{mean_confidence:.2f}")
+                    st.caption(
+                        "Relative confidence is a texture/consistency heuristic, not a calibrated probability."
+                    )
                     left, right = st.columns(2)
                     with left:
                         st.image(cv2.cvtColor(result.rectified_a, cv2.COLOR_BGR2RGB), caption="Rectified camera A")
@@ -820,10 +825,25 @@ else:
                     )
                     depth_figure.update_layout(height=420)
                     st.plotly_chart(depth_figure, use_container_width=True)
+                    confidence_figure = px.imshow(
+                        result.confidence_map,
+                        zmin=0.0, zmax=1.0,
+                        color_continuous_scale="Viridis",
+                        labels={"x": "Pixel", "y": "Pixel row", "color": "Relative confidence"},
+                        title="Stereo relative confidence map · heuristic",
+                    )
+                    confidence_figure.update_layout(height=420)
+                    st.plotly_chart(confidence_figure, use_container_width=True)
                     st.download_button(
                         "Download depth map (CSV)",
                         pd.DataFrame(result.depth_map).to_csv(index=False).encode("utf-8"),
                         file_name="blindspot_stereo_depth.csv",
+                        mime="text/csv",
+                    )
+                    st.download_button(
+                        "Download relative confidence map (CSV)",
+                        pd.DataFrame(result.confidence_map).to_csv(index=False).encode("utf-8"),
+                        file_name="blindspot_stereo_confidence.csv",
                         mime="text/csv",
                     )
                     cloud_stride = st.select_slider(
