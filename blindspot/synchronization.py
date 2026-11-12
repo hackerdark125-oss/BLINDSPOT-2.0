@@ -54,9 +54,10 @@ def synchronize_timestamps(
                 "skew_seconds": 0.0,
             }
         }
+        proposed_cursors = dict(cursors)
         for name in names[1:]:
             timeline = normalized[name]
-            cursor = cursors[name]
+            cursor = proposed_cursors[name]
             position = bisect_left(timeline, reference_time, lo=cursor)
             candidates = [index for index in (position - 1, position) if cursor <= index < len(timeline)]
             if not candidates:
@@ -73,8 +74,9 @@ def synchronize_timestamps(
                 "aligned_time_seconds": timeline[best],
                 "skew_seconds": skew,
             }
-            cursors[name] = best + 1
+            proposed_cursors[name] = best + 1
         if matched:
+            cursors = proposed_cursors
             aligned.append({
                 "reference_time_seconds": reference_time,
                 "samples": matched,
