@@ -7,6 +7,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from blindspot.motion import MotionFreshnessTracker
+
 
 @dataclass(frozen=True)
 class FrameMetrics:
@@ -23,6 +25,9 @@ class FrameAnalysis:
     timestamp_seconds: float
     metrics: FrameMetrics
     confidence_map: np.ndarray
+    motion_magnitude_map: np.ndarray | None = None
+    motion_age_seconds: np.ndarray | None = None
+    mean_motion: float | None = None
 
 
 def _validate_grid_size(grid_size: int) -> None:
@@ -80,7 +85,7 @@ def analyse_frame(frame: np.ndarray, grid_size: int = 8) -> FrameAnalysis:
 
 def sample_video(path: str, sample_every_seconds: float = 1.0,
                  max_samples: int = 120, grid_size: int = 8) -> list[FrameAnalysis]:
-    """Sample a video at a fixed interval and analyse each decoded frame."""
+    """Sample a video and calculate per-cell optical-flow activity diagnostics."""
     _validate_grid_size(grid_size)
     if not np.isfinite(sample_every_seconds) or sample_every_seconds <= 0:
         raise ValueError("sample_every_seconds must be a positive finite number")
@@ -98,14 +103,21 @@ def sample_video(path: str, sample_every_seconds: float = 1.0,
         fps = 25.0
     step = max(1, int(round(fps * sample_every_seconds)))
     results, index = [], 0
+    motion_tracker = MotionFreshnessTracker(grid_size=grid_size)
     try:
         while len(results) < max_samples:
             ok, frame = capture.read()
             if not ok:
                 break
             if index % step == 0:
+                timestamp = index / fps
                 result = analyse_frame(frame, grid_size)
-                results.append(FrameAnalysis(index/fps, result.metrics, result.confidence_map))
+                motion = motion_tracker.update(frame, timestamp)
+                results.append(FrameAnalysis(
+                    timestamp, result.metrics, result.confidence_map,
+                    motion.magnitude_map, motion.activity_age_seconds,
+                    motion.mean_magnitude,
+                ))
             index += 1
     finally:
         capture.release()
