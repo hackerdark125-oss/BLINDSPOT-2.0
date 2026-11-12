@@ -24,6 +24,11 @@ BlindSpot 2.0 is an experimental computer-vision research prototype that highlig
 - Chessboard-based camera intrinsic and lens-distortion calibration
 - Paired chessboard stereo calibration for relative camera rotation and translation
 - Planar two-camera ground-footprint and overlap estimation from calibrated stereo pose
+- Stereo visual odometry, depth-to-3D point-cloud reconstruction, and PLY export
+- Optional tracked-object masking during reconstruction to reduce moving-object contamination
+- Manual loop-closure drift correction using independently verified translation constraints
+- Multi-camera XYZRGB point-cloud fusion using externally calibrated camera-to-world poses
+- ASCII and binary little-/big-endian PLY 1.0 import, plus a batch fusion CLI and JSON summaries
 - Stereo rectification, SGBM disparity estimation, and depth-map CSV export
 - CSV-based stereo-depth benchmark CLI for MAE, RMSE, relative error, and valid-pixel coverage
 - Calibration JSON export and undistortion preview
@@ -159,8 +164,11 @@ Each sampled frame is divided into a configurable grid. Every cell receives a he
 - [x] Scene-change resets and ORB/RANSAC global camera-motion compensation for motion diagnostics
 - [x] Multi-camera timestamp alignment utility and dashboard export (manual offsets; no hardware sync guarantee)
 - [x] Planar two-camera ground-footprint and overlap estimator using supplied camera pose
-- [ ] Visual-localisation-based pose estimation and validated 3D coverage reconstruction
-- [ ] Geometric multi-camera coverage estimation using camera pose / visual localisation
+- [x] Stereo visual odometry and depth-based 3D point-cloud reconstruction (local trajectory; drift remains possible)
+- [x] Geometric planar two-camera coverage and multi-camera point-cloud fusion using supplied camera poses
+- [x] Manual loop-closure translation constraints and pose-graph drift correction
+- [ ] Automatic visual localisation and loop-closure detection with full 6DoF pose-graph optimisation
+- [ ] Ground-truth-validated arbitrary 3D coverage reconstruction and automatic multi-camera extrinsic calibration
 - [x] Quality-score agreement evaluator and per-cell human-label export tooling
 - [ ] Validated uncertainty model and representative benchmark dataset
 - [x] Quantitative stereo-depth benchmark evaluator and CLI for known-distance samples
