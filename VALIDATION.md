@@ -92,4 +92,4 @@ The repository can be considered **software-complete for its documented prototyp
 - [ ] Measure inference latency separately on the target machine and record the hardware, model size, image size, and frame stride.
 - [ ] Repeat in daylight, low light, crowded scenes, and partial occlusion; keep each condition's result separate.
 
-The included evaluator uses greedy class-aware IoU matching and counts ID changes only on consecutive frame indices. It is not a replacement for a full MOT benchmark. Do not claim field accuracy without labelled footage and repeatable measurements.
+The included evaluator uses greedy class-aware IoU matching and counts ID changes only on consecutive evaluated samples. It is not a replacement for a full MOT benchmark. Do not claim field accuracy without labelled footage and repeatable measurements.
