@@ -26,5 +26,26 @@ jobs:
         run: python -m compileall -q app.py blindspot tests
       - name: Run unit tests
         run: python -m pytest -q
+      - name: Smoke-test Streamlit startup
+        run: |
+          python -m streamlit run app.py --server.headless=true --server.port=8501 > /tmp/blindspot-streamlit.log 2>&1 &
+          app_pid=$!
+          trap 'kill "$app_pid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import time
+          import urllib.request
+
+          url = "http://127.0.0.1:8501/_stcore/health"
+          for attempt in range(30):
+              try:
+                  with urllib.request.urlopen(url, timeout=2) as response:
+                      if response.status == 200:
+                          print("Streamlit health endpoint is ready")
+                          break
+              except Exception:
+                  time.sleep(1)
+          else:
+              raise SystemExit("Streamlit did not become healthy within 30 seconds")
+          PY
       - name: Build Docker image
         run: docker build -t blindspot-2:ci .
