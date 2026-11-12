@@ -187,3 +187,28 @@ python scripts/benchmark_tracking.py --ground-truth ground_truth.csv --predictio
 ```
 
 Matching uses greedy class-aware IoU. ID switches count only when an object is matched to a different predicted ID on the immediately following evaluated sample (even when source frame indices skip due to sampling). This is a project diagnostic, not a full MOTChallenge/HOTA/IDF1 implementation. Do not infer FPS from video duration; measure per-frame YOLO+ByteTrack processing time directly.
+
+
+## 3D point-cloud reconstruction and visual motion
+
+The stereo depth pipeline can now be converted into a coloured 3D point cloud. Save a depth map as a 2D NumPy `.npy` array and provide the matching camera intrinsics JSON:
+
+```bash
+python scripts/reconstruct_point_cloud.py --depth depth.npy --intrinsics camera_calibration.json --output scene.ply --stride 2
+```
+
+The PLY file contains XYZ coordinates and RGB colour values and can be opened in common point-cloud viewers. Depth and translations retain the calibration distance unit. The point cloud is only as accurate as stereo calibration, synchronisation, depth estimates, and the supplied intrinsics. Invalid depth pixels are omitted.
+
+A two-frame ORB + essential-matrix visual-motion estimator is available as `blindspot.reconstruction.estimate_visual_motion`. It estimates relative rotation and translation direction from calibrated images. Monocular translation scale is fundamentally ambiguous; this is not globally corrected visual odometry, SLAM, or absolute localisation. A metric 3D scene requires stereo depth or another scale reference and measured validation.
+
+## Label-driven uncertainty calibration
+
+The new `blindspot.uncertainty` module evaluates probability-like confidence values against independently labelled binary outcomes. It reports Brier score, log loss, expected calibration error (ECE), and reliability bins, and fits a monotone isotonic mapping using the pool-adjacent-violators algorithm.
+
+Prepare a CSV with `predicted_confidence,outcome` columns, where confidence is in [0, 1] and outcome is 0 or 1:
+
+```bash
+python scripts/benchmark_uncertainty.py --input labelled_confidence.csv --output uncertainty_calibration.json
+```
+
+Use the isotonic calibrator only after fitting on a training split; report final metrics on a separate held-out split. The existing image-quality heuristic score is not automatically a probability, and this framework does not make it calibrated without representative independent labels.

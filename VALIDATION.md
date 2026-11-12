@@ -129,3 +129,22 @@ The depth benchmark is only as reliable as the manually measured target distance
 The motion compensation and scene-change heuristics are approximate; feature-poor scenes fall back to raw optical flow, and false scene-change detections remain possible. They are not visual odometry or camera-pose estimates.
 
 The included evaluator uses greedy class-aware IoU matching and counts ID changes only on consecutive evaluated samples. It is not a replacement for a full MOT benchmark. Do not claim field accuracy without labelled footage and repeatable measurements.
+
+
+## 6.4 3D point-cloud and visual-motion software validation
+
+- [ ] Export a stereo depth map and matching camera intrinsics; convert it to PLY with `scripts/reconstruct_point_cloud.py`.
+- [ ] Confirm point count, coordinate units, and colour alignment in a point-cloud viewer.
+- [ ] Compare reconstructed points against measured targets at multiple distances and positions.
+- [ ] Check that invalid/zero depth pixels are omitted and that max-depth filtering behaves as configured.
+- [ ] Run the two-frame visual-motion estimator on textured footage with known camera movement; record inlier count and translation direction.
+- [ ] Do not interpret monocular translation direction as metric displacement or absolute camera position.
+
+## 6.5 Uncertainty calibration software validation
+
+- [ ] Prepare independently reviewed binary outcomes and confidence values.
+- [ ] Split labelled samples into calibration/training and held-out evaluation sets before fitting.
+- [ ] Fit the isotonic mapping on the training split only.
+- [ ] Evaluate Brier score, log loss, ECE, and reliability bins on the held-out split.
+- [ ] Repeat across lighting, motion, distance, and scene categories; report sample counts.
+- [ ] Do not call the uncertainty output calibrated until held-out results support that claim.
