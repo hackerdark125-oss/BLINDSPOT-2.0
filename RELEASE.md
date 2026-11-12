@@ -35,6 +35,7 @@ Do not publish a field-accuracy or safety claim without this evidence.
 
 - Image-quality confidence scores are heuristic unless separately calibrated
   against independent held-out labels.
+- Camera calibration reports overall and per-view reprojection errors and can remove gross outlier views with a robust threshold. Reprojection error is an image-space fit metric, not a guarantee of metric accuracy.
 - Stereo depth depends on calibration, synchronization, texture, and scene
   conditions.
 - YOLO/ByteTrack masking only excludes detected tracked moving regions; missed
