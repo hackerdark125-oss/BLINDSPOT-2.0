@@ -21,6 +21,7 @@ from blindspot.stereo import (
     rectify_and_compute_depth,
 )
 from blindspot.coverage import load_camera_pose_json, estimate_stereo_planar_coverage
+from blindspot.reconstruction import depth_to_point_cloud, write_ply
 
 
 @st.cache_resource(show_spinner=False)
@@ -731,6 +732,36 @@ else:
                         file_name="blindspot_stereo_depth.csv",
                         mime="text/csv",
                     )
+                    cloud_stride = st.select_slider(
+                        "3D point-cloud density (pixel stride)",
+                        options=[1, 2, 3, 4, 6, 8],
+                        value=2,
+                        key="point_cloud_stride",
+                    )
+                    try:
+                        point_cloud = depth_to_point_cloud(
+                            result.depth_map,
+                            calibration_a.camera_matrix,
+                            color_image=result.rectified_a,
+                            valid_mask=result.valid_mask,
+                            stride=int(cloud_stride),
+                        )
+                        with tempfile.TemporaryDirectory() as temp_dir:
+                            ply_path = write_ply(Path(temp_dir) / "blindspot_scene.ply", point_cloud)
+                            ply_bytes = ply_path.read_bytes()
+                        st.metric("3D points generated", f"{len(point_cloud):,}")
+                        st.download_button(
+                            "Download reconstructed 3D point cloud (PLY)",
+                            ply_bytes,
+                            file_name="blindspot_scene.ply",
+                            mime="application/octet-stream",
+                        )
+                        st.caption(
+                            "Point coordinates use the stereo calibration distance unit. "
+                            "This is a stereo depth point cloud, not globally aligned SLAM."
+                        )
+                    except Exception as cloud_exc:
+                        st.warning(f"3D point-cloud export unavailable: {cloud_exc}")
             except Exception as exc:
                 st.error(f"Stereo depth estimation failed: {exc}")
 
