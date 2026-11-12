@@ -103,6 +103,8 @@ Each sampled frame is divided into a configurable grid. Every cell receives a he
 - [x] Stereo rectification, disparity estimation, and depth-map export
 - [x] Input validation, unit tests, and CI
 - [x] Baseline pedestrian detection and short-term centroid tracking
+- [x] Optional YOLO11 detection across all 80 COCO classes with ByteTrack IDs
+- [x] Quantitative detection/tracking evaluator and per-frame processing benchmark tooling
 - [ ] Scene-change-aware activity baselines and robust camera-motion compensation
 - [ ] Multi-camera time synchronisation and validated 3D coverage reconstruction
 - [ ] Geometric multi-camera coverage estimation using camera pose / visual localisation
@@ -126,3 +128,23 @@ Python · OpenCV · NumPy · Pandas · Plotly · Streamlit · Pytest · GitHub A
 
 ## License
 MIT
+
+## Quantitative detection and tracking benchmark
+
+The benchmark utility compares YOLO/ByteTrack predictions with manually labelled ground truth. It reports precision, recall, F1, false positives/negatives, mean matched IoU, consecutive-sampled-frame ID switches, and per-sampled-frame YOLO+ByteTrack processing throughput. ByteTrack state is reset between separate video uploads so IDs do not leak from one clip into the next. The app exports an object-level AI tracking CSV and a separate per-frame performance CSV (including frames with zero detections). Use the object-level file as predictions and pass the performance file with --timings for an unbiased per-sampled-frame latency summary. Metrics are meaningful only when labels are accurate and both CSV files use the same sampled frame indices.
+
+Create ground-truth and prediction CSV files with this header:
+
+```csv
+frame_index,track_id,class_id,x,y,width,height
+```
+
+Each row represents one object box. Keep the same ground-truth track ID for the same real object across frames. Coordinates are pixel-space top-left X/Y and box width/height. Frame indices refer to original video frame numbers.
+
+Run the evaluator:
+
+```bat
+python scripts/benchmark_tracking.py --ground-truth ground_truth.csv --predictions predictions.csv --timings blindspot_ai_frame_performance.csv --output benchmark.json --iou 0.5
+```
+
+Matching uses greedy class-aware IoU. ID switches count only when an object is matched to a different predicted ID on the immediately following evaluated sample (even when source frame indices skip due to sampling). This is a project diagnostic, not a full MOTChallenge/HOTA/IDF1 implementation. Do not infer FPS from video duration; measure per-frame YOLO+ByteTrack processing time directly.

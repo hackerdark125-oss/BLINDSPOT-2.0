@@ -281,7 +281,26 @@ elif mode == "AI object detection & tracking":
     with ai_col3:
         class_options = {
             "person": 0, "bicycle": 1, "car": 2, "motorcycle": 3,
-            "bus": 5, "train": 6, "truck": 7, "boat": 8,
+            "airplane": 4, "bus": 5, "train": 6, "truck": 7, "boat": 8,
+            "traffic light": 9, "fire hydrant": 10, "stop sign": 11,
+            "parking meter": 12, "bench": 13, "bird": 14, "cat": 15,
+            "dog": 16, "horse": 17, "sheep": 18, "cow": 19,
+            "elephant": 20, "bear": 21, "zebra": 22, "giraffe": 23,
+            "backpack": 24, "umbrella": 25, "handbag": 26, "tie": 27,
+            "suitcase": 28, "frisbee": 29, "skis": 30, "snowboard": 31,
+            "sports ball": 32, "kite": 33, "baseball bat": 34,
+            "baseball glove": 35, "skateboard": 36, "surfboard": 37,
+            "tennis racket": 38, "bottle": 39, "wine glass": 40, "cup": 41,
+            "fork": 42, "knife": 43, "spoon": 44, "bowl": 45,
+            "banana": 46, "apple": 47, "sandwich": 48, "orange": 49,
+            "broccoli": 50, "carrot": 51, "hot dog": 52, "pizza": 53,
+            "donut": 54, "cake": 55, "chair": 56, "couch": 57,
+            "potted plant": 58, "bed": 59, "dining table": 60, "toilet": 61,
+            "tv": 62, "laptop": 63, "mouse": 64, "remote": 65,
+            "keyboard": 66, "cell phone": 67, "microwave": 68, "oven": 69,
+            "toaster": 70, "sink": 71, "refrigerator": 72, "book": 73,
+            "clock": 74, "vase": 75, "scissors": 76, "teddy bear": 77,
+            "hair drier": 78, "toothbrush": 79,
         }
         selected_labels = st.multiselect(
             "Object classes",
@@ -328,7 +347,9 @@ elif mode == "AI object detection & tracking":
                             track_ids.add(item.track_id)
                         class_counts[item.class_name] = class_counts.get(item.class_name, 0) + 1
                         observations.append({
+                            "Frame index": result.frame_index,
                             "Time (s)": result.timestamp_seconds,
+                            "YOLO + ByteTrack (ms)": result.inference_time_ms,
                             "Track ID": item.track_id,
                             "Class": item.class_name,
                             "Class ID": item.class_id,
@@ -337,13 +358,19 @@ elif mode == "AI object detection & tracking":
                             "Width": item.width, "Height": item.height,
                         })
                 ai_df = pd.DataFrame(observations, columns=[
-                    "Time (s)", "Track ID", "Class", "Class ID", "Confidence",
+                    "Frame index", "Time (s)", "YOLO + ByteTrack (ms)", "Track ID", "Class", "Class ID", "Confidence",
                     "X", "Y", "Width", "Height",
                 ])
-                m1, m2, m3 = st.columns(3)
+                mean_inference_ms = float(np.mean([r.inference_time_ms for r in ai_results]))
+                m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Frames processed", len(ai_results))
                 m2.metric("Unique tracked IDs", len(track_ids))
                 m3.metric("Object observations", len(observations))
+                m4.metric("Mean YOLO + tracker", f"{mean_inference_ms:.1f} ms")
+                st.caption(
+                    f"YOLO + ByteTrack processing: {1000.0 / mean_inference_ms:.1f} FPS · "
+                    "excludes video decoding, rendering, and CSV export"
+                )
                 if class_counts:
                     st.write("**Detections by class**")
                     st.bar_chart(pd.Series(class_counts, name="Observations"))
@@ -352,6 +379,18 @@ elif mode == "AI object detection & tracking":
                     "Download AI tracking results (CSV)",
                     ai_df.to_csv(index=False).encode("utf-8"),
                     file_name="blindspot_ai_object_tracking.csv",
+                    mime="text/csv",
+                )
+                frame_metrics_df = pd.DataFrame([{
+                    "Frame index": result.frame_index,
+                    "Time (s)": result.timestamp_seconds,
+                    "YOLO + ByteTrack (ms)": result.inference_time_ms,
+                    "Detections": len(result.detections),
+                } for result in ai_results])
+                st.download_button(
+                    "Download per-frame performance (CSV)",
+                    frame_metrics_df.to_csv(index=False).encode("utf-8"),
+                    file_name="blindspot_ai_frame_performance.csv",
                     mime="text/csv",
                 )
                 if not observations:

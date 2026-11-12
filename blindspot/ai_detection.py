@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Sequence
 
 import cv2
@@ -27,7 +28,9 @@ class ObjectDetection:
 
 @dataclass(frozen=True)
 class ObjectTrackingFrame:
+    frame_index: int
     timestamp_seconds: float
+    inference_time_ms: float
     annotated_frame: np.ndarray
     detections: tuple[ObjectDetection, ...]
 
@@ -49,6 +52,16 @@ class YOLODetector:
             model = YOLO(weights)
         self.weights = weights
         self.model = model
+
+    def reset_tracker(self) -> None:
+        """Reset ByteTrack state before processing a separate video source."""
+        predictor = getattr(self.model, "predictor", None)
+        if predictor is None:
+            return
+        for tracker in getattr(predictor, "trackers", []) or []:
+            reset = getattr(tracker, "reset", None)
+            if callable(reset):
+                reset()
 
     def track_frame(
         self,
@@ -142,6 +155,7 @@ def process_video(
     if not video_path.exists():
         raise ValueError(f"Video does not exist: {path}")
     detector = detector or YOLODetector(weights)
+    detector.reset_tracker()
     capture = cv2.VideoCapture(str(video_path))
     if not capture.isOpened():
         capture.release()
@@ -158,9 +172,11 @@ def process_video(
             if not ok:
                 break
             if frame_index % sample_every_frames == 0:
+                inference_started = perf_counter()
                 detections = detector.track_frame(
                     frame, classes=classes, confidence=confidence, image_size=image_size
                 )
+                inference_time_ms = (perf_counter() - inference_started) * 1000.0
                 annotated = frame.copy()
                 for item in detections:
                     x1, y1 = item.x, item.y
@@ -173,7 +189,9 @@ def process_video(
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (40, 220, 80), 2, cv2.LINE_AA,
                     )
                 output.append(ObjectTrackingFrame(
+                    frame_index=frame_index,
                     timestamp_seconds=frame_index / fps,
+                    inference_time_ms=inference_time_ms,
                     annotated_frame=annotated,
                     detections=tuple(detections),
                 ))
