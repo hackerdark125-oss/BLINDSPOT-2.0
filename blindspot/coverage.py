@@ -93,14 +93,17 @@ def camera_footprint_on_plane(
     ):
         raise ValueError("camera intrinsics are invalid")
     rotation, translation = _pose_arrays(pose)
-    inverse = np.linalg.inv(matrix)
+    distortion = np.asarray(intrinsics.distortion_coefficients, dtype=np.float64).reshape(-1)
+    if distortion.size < 4 or not np.isfinite(distortion).all():
+        raise ValueError("camera distortion coefficients are invalid")
     pixels = np.asarray([
-        [0.0, 0.0, 1.0],
-        [intrinsics.image_width - 1.0, 0.0, 1.0],
-        [intrinsics.image_width - 1.0, intrinsics.image_height - 1.0, 1.0],
-        [0.0, intrinsics.image_height - 1.0, 1.0],
-    ], dtype=np.float64)
-    rays_camera = (inverse @ pixels.T).T
+        [0.0, 0.0],
+        [intrinsics.image_width - 1.0, 0.0],
+        [intrinsics.image_width - 1.0, intrinsics.image_height - 1.0],
+        [0.0, intrinsics.image_height - 1.0],
+    ], dtype=np.float64).reshape(-1, 1, 2)
+    normalized = cv2.undistortPoints(pixels, matrix, distortion).reshape(-1, 2)
+    rays_camera = np.column_stack((normalized, np.ones(len(normalized))))
     rays_world = (rotation @ rays_camera.T).T
     if np.any(np.abs(rays_world[:, 2]) < 1e-9):
         raise ValueError("one or more image-corner rays are parallel to the coverage plane")
