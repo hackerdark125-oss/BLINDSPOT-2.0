@@ -23,12 +23,12 @@ def read_rows(path: str):
         ]
 
 
-def extract_frame_inference_times(prediction_rows):
+def extract_frame_processing_times(prediction_rows):
     """Return one inference latency per sampled frame from object-level CSV rows."""
     timing_by_frame = {}
     for row in prediction_rows:
-        if row.get("Inference (ms)") not in (None, ""):
-            timing_by_frame.setdefault(row["frame_index"], float(row["Inference (ms)"]))
+        if row.get("YOLO + ByteTrack (ms)") not in (None, ""):
+            timing_by_frame.setdefault(row["frame_index"], float(row["YOLO + ByteTrack (ms)"]))
     return list(timing_by_frame.values())
 
 
@@ -42,17 +42,17 @@ def main() -> None:
     args = parser.parse_args()
     prediction_rows = read_rows(args.predictions)
     # The app exports one row per object, so count each sampled frame once.
-    inference_times = extract_frame_inference_times(prediction_rows)
+    processing_times = extract_frame_processing_times(prediction_rows)
     if args.timings:
         timing_rows = read_rows(args.timings)
-        inference_times = [
-            float(row.get("Inference (ms)") or row.get("inference_time_ms"))
+        processing_times = [
+            float(row.get("YOLO + ByteTrack (ms)") or row.get("inference_time_ms"))
             for row in timing_rows
-            if row.get("Inference (ms)") or row.get("inference_time_ms")
+            if row.get("YOLO + ByteTrack (ms)") or row.get("inference_time_ms")
         ]
     metrics = evaluate_tracking(
         read_rows(args.ground_truth), prediction_rows, args.iou,
-        inference_times_ms=inference_times or None,
+        processing_times_ms=processing_times or None,
     )
     output = Path(args.output)
     output.write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
