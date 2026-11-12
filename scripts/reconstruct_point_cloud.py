@@ -4,8 +4,12 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
 
 import numpy as np
+
+# Ensure direct script execution resolves the repository package.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from blindspot.reconstruction import depth_to_point_cloud, write_ply
 
