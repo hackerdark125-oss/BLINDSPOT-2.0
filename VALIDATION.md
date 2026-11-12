@@ -220,3 +220,14 @@ The included evaluator uses greedy class-aware IoU matching and counts ID change
 - [ ] Inspect the corrected PLY and trajectory CSV; compare raw and corrected outputs against measured reference positions.
 - [ ] Try an invalid or unsupported constraint and confirm the dashboard reports the error without crashing.
 - [ ] Never use a guessed loop-closure displacement or describe manual constraints as automatic loop-closure detection.
+
+
+## 6.13 Dashboard multi-camera PLY fusion
+
+- [ ] Export ASCII XYZRGB PLY files from at least two camera point clouds.
+- [ ] Create one shared pose JSON with matching filename-stem camera IDs and verified camera-to-world transforms.
+- [ ] Confirm the distance unit is consistent across all point clouds and translations.
+- [ ] Run the dashboard fusion workflow and inspect the sampled 3D preview.
+- [ ] Download the fused PLY and summary JSON; verify vertex count and coordinate alignment in a point-cloud viewer.
+- [ ] Try duplicate filenames, missing pose entries, invalid rotations, and binary PLY input; confirm clear validation errors.
+- [ ] Compare overlapping geometry against a measured reference before claiming reconstruction accuracy.
