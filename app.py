@@ -21,7 +21,10 @@ from blindspot.stereo import (
     rectify_and_compute_depth,
 )
 from blindspot.coverage import load_camera_pose_json, estimate_stereo_planar_coverage
-from blindspot.reconstruction import depth_to_point_cloud, write_ply
+from blindspot.reconstruction import (
+    depth_to_point_cloud, write_ply, estimate_stereo_visual_motion,
+    compose_camera_to_world_pose, fuse_point_clouds,
+)
 
 
 @st.cache_resource(show_spinner=False)
@@ -479,7 +482,7 @@ else:
     st.subheader("Camera calibration")
     calibration_mode = st.radio(
         "Calibration workflow",
-        ["Single-camera intrinsics", "Two-camera stereo extrinsics", "Stereo depth preview", "Planar coverage preview"],
+        ["Single-camera intrinsics", "Two-camera stereo extrinsics", "Stereo depth preview", "Stereo visual odometry & 3D fusion", "Planar coverage preview"],
         horizontal=True,
     )
     if calibration_mode == "Single-camera intrinsics":
@@ -741,7 +744,7 @@ else:
                     try:
                         point_cloud = depth_to_point_cloud(
                             result.depth_map,
-                            calibration_a.camera_matrix,
+                            result.rectified_camera_matrix if result.rectified_camera_matrix is not None else calibration_a.camera_matrix,
                             color_image=result.rectified_a,
                             valid_mask=result.valid_mask,
                             stride=int(cloud_stride),
@@ -764,6 +767,176 @@ else:
                         st.warning(f"3D point-cloud export unavailable: {cloud_exc}")
             except Exception as exc:
                 st.error(f"Stereo depth estimation failed: {exc}")
+
+    elif calibration_mode == "Stereo visual odometry & 3D fusion":
+        st.write(
+            "Upload synchronized stereo videos and matching camera calibration files. "
+            "The pipeline estimates stereo depth, tracks 3D features with PnP-RANSAC, "
+            "chains camera poses, and fuses sampled point clouds."
+        )
+        st.warning(
+            "Use fixed, synchronized cameras with the same resolution and calibration. "
+            "This is local stereo visual odometry: drift accumulates and there is no loop "
+            "closure or global SLAM optimisation."
+        )
+        left, right = st.columns(2)
+        with left:
+            vo_video_a = st.file_uploader("Camera A video", type=["mp4", "avi", "mov", "mkv"], key="vo_video_a")
+            vo_intrinsics_a = st.file_uploader("Camera A intrinsics JSON", type=["json"], key="vo_intrinsics_a")
+        with right:
+            vo_video_b = st.file_uploader("Camera B video", type=["mp4", "avi", "mov", "mkv"], key="vo_video_b")
+            vo_intrinsics_b = st.file_uploader("Camera B intrinsics JSON", type=["json"], key="vo_intrinsics_b")
+        vo_stereo_json = st.file_uploader("Stereo extrinsics JSON", type=["json"], key="vo_stereo_json")
+        v1, v2, v3 = st.columns(3)
+        with v1:
+            vo_interval = st.slider("VO sampling interval (seconds)", 0.25, 3.0, 1.0, 0.25, key="vo_interval")
+        with v2:
+            vo_limit = st.slider("Maximum stereo frame pairs", 2, 30, 10, 1, key="vo_limit")
+        with v3:
+            vo_stride = st.select_slider("Point-cloud pixel stride", options=[2, 3, 4, 6, 8], value=4, key="vo_stride")
+        vo_voxel = st.number_input("Voxel averaging size (stereo distance units)", min_value=0.001, value=1.0, step=0.1, key="vo_voxel")
+        ready_vo = bool(vo_video_a and vo_video_b and vo_intrinsics_a and vo_intrinsics_b and vo_stereo_json)
+        if st.button("Run stereo visual odometry & fuse 3D scene", type="primary", disabled=not ready_vo):
+            capture_a = capture_b = None
+            temp_paths = []
+            try:
+                calibration_a = load_calibration_json(vo_intrinsics_a.getvalue().decode("utf-8"))
+                calibration_b = load_calibration_json(vo_intrinsics_b.getvalue().decode("utf-8"))
+                stereo = load_stereo_calibration_json(vo_stereo_json.getvalue().decode("utf-8"))
+                for upload in (vo_video_a, vo_video_b):
+                    suffix = Path(upload.name).suffix or ".mp4"
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+                        temp_file.write(upload.getvalue())
+                        temp_paths.append(temp_file.name)
+                capture_a = cv2.VideoCapture(temp_paths[0])
+                capture_b = cv2.VideoCapture(temp_paths[1])
+                if not capture_a.isOpened() or not capture_b.isOpened():
+                    raise ValueError("could not open both uploaded stereo videos")
+                fps_a = capture_a.get(cv2.CAP_PROP_FPS)
+                fps_b = capture_b.get(cv2.CAP_PROP_FPS)
+                if not np.isfinite(fps_a) or not np.isfinite(fps_b) or fps_a <= 0 or fps_b <= 0:
+                    raise ValueError("both videos must report a valid frame rate")
+                duration_a = capture_a.get(cv2.CAP_PROP_FRAME_COUNT) / fps_a
+                duration_b = capture_b.get(cv2.CAP_PROP_FRAME_COUNT) / fps_b
+                if abs(duration_a - duration_b) > max(vo_interval, 0.5):
+                    st.warning("Video durations differ. Sampling will stop when either stream ends.")
+                local_clouds, world_poses, trajectory = [], [], []
+                previous_frame = previous_depth = None
+                world_rotation, world_translation = np.eye(3), np.zeros(3)
+                processed, skipped = 0, 0
+                progress = st.progress(0.0)
+                status = st.empty()
+                for sample_index in range(int(vo_limit)):
+                    timestamp = sample_index * float(vo_interval)
+                    capture_a.set(cv2.CAP_PROP_POS_MSEC, timestamp * 1000.0)
+                    capture_b.set(cv2.CAP_PROP_POS_MSEC, timestamp * 1000.0)
+                    ok_a, frame_a = capture_a.read()
+                    ok_b, frame_b = capture_b.read()
+                    if not ok_a or not ok_b:
+                        break
+                    status.write(f"Processing stereo pair {sample_index + 1}/{vo_limit} · {timestamp:.2f}s")
+                    try:
+                        depth_result = rectify_and_compute_depth(
+                            frame_a, frame_b, calibration_a, calibration_b, stereo,
+                            num_disparities=128, block_size=5,
+                        )
+                        if int(depth_result.valid_mask.sum()) < 100:
+                            skipped += 1
+                            continue
+                        rectified_k = (
+                            depth_result.rectified_camera_matrix
+                            if depth_result.rectified_camera_matrix is not None
+                            else calibration_a.camera_matrix
+                        )
+                        if previous_frame is None:
+                            local_cloud = depth_to_point_cloud(
+                                depth_result.depth_map, rectified_k,
+                                color_image=depth_result.rectified_a,
+                                valid_mask=depth_result.valid_mask, stride=int(vo_stride),
+                            )
+                            if len(local_cloud) == 0:
+                                skipped += 1
+                                continue
+                            local_clouds.append(local_cloud)
+                            world_poses.append((world_rotation.copy(), world_translation.copy()))
+                            trajectory.append({
+                                "sample_index": sample_index, "time_seconds": timestamp,
+                                "x": 0.0, "y": 0.0, "z": 0.0,
+                                "pnp_inliers": 0, "pnp_inlier_ratio": 0.0,
+                            })
+                            previous_frame = depth_result.rectified_a
+                            previous_depth = depth_result.depth_map
+                            processed += 1
+                        else:
+                            motion = estimate_stereo_visual_motion(
+                                previous_frame, depth_result.rectified_a, previous_depth,
+                                rectified_k, min_inliers=8,
+                            )
+                            candidate_rotation, candidate_translation = compose_camera_to_world_pose(
+                                world_rotation, world_translation,
+                                motion.rotation_matrix, motion.translation_vector,
+                            )
+                            local_cloud = depth_to_point_cloud(
+                                depth_result.depth_map, rectified_k,
+                                color_image=depth_result.rectified_a,
+                                valid_mask=depth_result.valid_mask, stride=int(vo_stride),
+                            )
+                            if len(local_cloud) == 0:
+                                skipped += 1
+                                continue
+                            local_clouds.append(local_cloud)
+                            world_poses.append((candidate_rotation.copy(), candidate_translation.copy()))
+                            world_rotation, world_translation = candidate_rotation, candidate_translation
+                            trajectory.append({
+                                "sample_index": sample_index, "time_seconds": timestamp,
+                                "x": float(world_translation[0]), "y": float(world_translation[1]),
+                                "z": float(world_translation[2]),
+                                "pnp_inliers": motion.inlier_count,
+                                "pnp_inlier_ratio": motion.inlier_ratio,
+                            })
+                            previous_frame = depth_result.rectified_a
+                            previous_depth = depth_result.depth_map
+                            processed += 1
+                    except Exception as frame_exc:
+                        skipped += 1
+                        st.warning(f"Pair {sample_index + 1} skipped: {frame_exc}")
+                    progress.progress((sample_index + 1) / int(vo_limit))
+                status.empty()
+                progress.empty()
+                if not local_clouds:
+                    st.error("No valid stereo frames could be reconstructed. Check synchronisation, texture, and calibration.")
+                else:
+                    fused = fuse_point_clouds(local_clouds, world_poses, voxel_size=float(vo_voxel))
+                    with tempfile.TemporaryDirectory() as output_dir:
+                        ply_path = write_ply(Path(output_dir) / "blindspot_fused_scene.ply", fused)
+                        ply_bytes = ply_path.read_bytes()
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Frames reconstructed", processed)
+                    m2.metric("Frames skipped", skipped)
+                    m3.metric("Fused 3D points", f"{len(fused):,}")
+                    st.dataframe(pd.DataFrame(trajectory), use_container_width=True, hide_index=True)
+                    st.download_button(
+                        "Download fused multi-frame 3D scene (PLY)", ply_bytes,
+                        file_name="blindspot_fused_scene.ply", mime="application/octet-stream",
+                    )
+                    st.download_button(
+                        "Download estimated camera trajectory (CSV)",
+                        pd.DataFrame(trajectory).to_csv(index=False).encode("utf-8"),
+                        file_name="blindspot_camera_trajectory.csv", mime="text/csv",
+                    )
+                    st.caption(
+                        f"All translations and 3D coordinates use {stereo.translation_unit}. "
+                        "The trajectory is locally chained and may drift; no loop closure or global correction is applied."
+                    )
+            except Exception as exc:
+                st.error(f"Stereo visual odometry failed: {exc}")
+            finally:
+                if capture_a is not None:
+                    capture_a.release()
+                if capture_b is not None:
+                    capture_b.release()
+                for temp_path in temp_paths:
+                    Path(temp_path).unlink(missing_ok=True)
 
     else:
         st.write(

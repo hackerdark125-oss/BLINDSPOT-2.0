@@ -134,3 +134,6 @@ def test_stereo_depth_pipeline_returns_expected_arrays():
     assert result.depth_map.shape == image_a.shape[:2]
     assert result.valid_mask.dtype == np.bool_
     assert result.translation_unit == "cm"
+    assert result.rectified_camera_matrix.shape == (3, 3)
+    assert result.rectification_rotation.shape == (3, 3)
+    assert np.isfinite(result.rectified_camera_matrix).all()

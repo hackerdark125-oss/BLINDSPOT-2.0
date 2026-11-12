@@ -148,3 +148,24 @@ The included evaluator uses greedy class-aware IoU matching and counts ID change
 - [ ] Evaluate Brier score, log loss, ECE, and reliability bins on the held-out split.
 - [ ] Repeat across lighting, motion, distance, and scene categories; report sample counts.
 - [ ] Do not call the uncertainty output calibrated until held-out results support that claim.
+
+
+## 6.6 Stereo visual odometry and fused 3D reconstruction
+
+- [ ] Generate synchronized stereo depth maps for consecutive frames using fixed, calibrated cameras.
+- [ ] Estimate frame-to-frame motion with ORB correspondences and PnP-RANSAC using previous-frame depth.
+- [ ] Record inlier counts, inlier ratios, failed-frame rate, and processing time.
+- [ ] Chain relative poses into a common coordinate frame and inspect accumulated drift.
+- [ ] Fuse per-frame point clouds using the estimated camera-to-world poses; compare against a measured reference object/trajectory.
+- [ ] Repeat with moving objects, low texture, blur, lighting changes, and partial occlusion.
+- [ ] Treat this as local stereo visual odometry only; loop closure, global optimisation, relocalisation, and drift correction remain outside the current implementation.
+
+
+## 6.7 Dashboard stereo visual odometry workflow
+
+- [ ] Upload two synchronized stereo videos recorded with the calibrated fixed camera rig.
+- [ ] Upload the matching camera A/B intrinsics and stereo extrinsics JSON files.
+- [ ] Confirm the videos use the calibrated resolution, camera order, and compatible frame rates.
+- [ ] Run a short clip first; review reconstructed/skipped pair counts and PnP inlier ratios.
+- [ ] Inspect the trajectory CSV and fused PLY in a point-cloud viewer.
+- [ ] Compare trajectory and reconstruction against independently measured ground truth before making accuracy claims.

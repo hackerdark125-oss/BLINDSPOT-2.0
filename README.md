@@ -212,3 +212,15 @@ python scripts/benchmark_uncertainty.py --input labelled_confidence.csv --output
 ```
 
 Use the isotonic calibrator only after fitting on a training split; report final metrics on a separate held-out split. The existing image-quality heuristic score is not automatically a probability, and this framework does not make it calibrated without representative independent labels.
+
+
+## Stereo visual odometry and multi-frame point-cloud fusion
+
+The reconstruction module now includes a stereo visual-odometry step. It matches ORB features between adjacent frames, lifts previous-frame features into 3D using the corresponding stereo depth map, and estimates the previous-to-current camera transform with PnP-RANSAC. Unlike monocular essential-matrix motion, the translation can carry metric scale because it is anchored to the supplied depth map. Depth and translation use the same unit.
+
+Python API: `blindspot.reconstruction.estimate_stereo_visual_motion`. Chain successive relative transforms with `compose_camera_to_world_pose`, then use `fuse_point_clouds` to transform frame point clouds into a common world coordinate system. Optional voxel averaging reduces duplicate density.
+
+**Important limitations:** this is a frame-to-frame odometry building block, not a complete SLAM system. It does not perform loop closure, global bundle adjustment, relocalisation, dynamic-object masking, or drift correction. Pose errors accumulate over time; point-cloud fusion is only globally meaningful when supplied poses are accurate. Use calibrated stereo depth for every frame and independently measured reference trajectories before making localisation-accuracy claims.
+
+
+The **Stereo visual odometry & 3D fusion** dashboard mode accepts two synchronized stereo videos plus both intrinsics files and stereo extrinsics. It samples frame pairs, computes depth, estimates local metric camera motion with PnP-RANSAC, chains camera poses, and exports a fused PLY point cloud plus a trajectory CSV. The point cloud uses the rectified camera projection matrix returned by stereo rectification. The workflow is compute-intensive; start with short clips and a coarse point-cloud stride. Failed frame pairs are skipped and counted. Pose drift accumulates because this prototype does not implement loop closure or global optimisation.
