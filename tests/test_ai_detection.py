@@ -90,3 +90,23 @@ def test_yolo_detector_handles_empty_result():
     assert YOLODetector(model=model).track_frame(
         np.zeros((120, 100, 3), dtype=np.uint8)
     ) == []
+
+
+def test_reset_tracker_clears_each_persistent_tracker():
+    class FakeTracker:
+        def __init__(self):
+            self.reset_count = 0
+
+        def reset(self):
+            self.reset_count += 1
+
+    trackers = [FakeTracker(), FakeTracker()]
+    model = FakeModel()
+    model.predictor = SimpleNamespace(trackers=trackers)
+    detector = YOLODetector(model=model)
+    detector.reset_tracker()
+    assert [tracker.reset_count for tracker in trackers] == [1, 1]
+
+
+def test_reset_tracker_is_safe_before_predictor_initialization():
+    YOLODetector(model=FakeModel()).reset_tracker()
