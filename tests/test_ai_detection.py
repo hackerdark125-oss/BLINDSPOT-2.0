@@ -164,3 +164,39 @@ def test_coco_class_catalogue_contains_all_eighty_unique_ids():
 
     assert len(COCO_CLASSES) == 80
     assert sorted(COCO_CLASSES.values()) == list(range(80))
+
+
+def test_process_stream_stops_after_prolonged_frame_loss(monkeypatch):
+    from blindspot.ai_detection import process_stream
+
+    class EmptyCapture:
+        def isOpened(self):
+            return True
+
+        def read(self):
+            return False, None
+
+        def release(self):
+            self.released = True
+
+    capture = EmptyCapture()
+    monkeypatch.setattr("blindspot.ai_detection.cv2.VideoCapture", lambda source: capture)
+    ticks = iter([0.0, 1.0, 2.0])
+    monkeypatch.setattr("blindspot.ai_detection.perf_counter", lambda: next(ticks))
+    monkeypatch.setattr("blindspot.ai_detection.time.sleep", lambda delay: None)
+    with pytest.raises(ValueError, match="No frames received"):
+        process_stream(
+            "0", duration_seconds=10, read_timeout_seconds=2,
+            detector=YOLODetector(model=FakeModel()),
+        )
+    assert capture.released is True
+
+
+def test_process_stream_rejects_nonpositive_read_timeout():
+    from blindspot.ai_detection import process_stream
+
+    with pytest.raises(ValueError, match="read_timeout_seconds"):
+        process_stream(
+            "0", read_timeout_seconds=0,
+            detector=YOLODetector(model=FakeModel()),
+        )
