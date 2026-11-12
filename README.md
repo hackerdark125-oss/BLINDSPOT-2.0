@@ -403,3 +403,20 @@ backend. Loop constraints must be independently verified and expressed in the
 same distance unit as odometry. Incorrect constraints can deform the entire
 trajectory. The existing translation-only API remains available for backward
 compatibility. Synthetic tests establish solver behaviour, not field accuracy.
+
+
+## Automatic rigid point-cloud registration (ICP)
+
+The optional `blindspot.registration.register_point_cloud_icp` API estimates
+a rigid source-to-target transform from overlapping XYZ or XYZRGB clouds. It
+uses deterministic voxel sampling, bounded-memory nearest-neighbour matching,
+distance gating, trimmed correspondences, and SVD rigid alignment. It returns
+rotation, translation, correspondence fitness, RMSE, iteration count, and a
+convergence flag. This can initialise or verify multi-camera alignment before
+calling the existing fusion API.
+
+ICP is a local optimiser and can converge to an incorrect alignment when the
+initial pose is poor, overlap is small, geometry is repetitive or symmetric, or
+units differ. Check fitness and RMSE and retain the original camera poses. It
+does not replace synchronized capture, intrinsic/stereo calibration, or an
+independent reference transform. It is not an automatic calibration guarantee.
