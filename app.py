@@ -328,6 +328,7 @@ elif mode == "AI object detection & tracking":
                             track_ids.add(item.track_id)
                         class_counts[item.class_name] = class_counts.get(item.class_name, 0) + 1
                         observations.append({
+                            "Frame index": result.frame_index,
                             "Time (s)": result.timestamp_seconds,
                             "Track ID": item.track_id,
                             "Class": item.class_name,
@@ -337,7 +338,7 @@ elif mode == "AI object detection & tracking":
                             "Width": item.width, "Height": item.height,
                         })
                 ai_df = pd.DataFrame(observations, columns=[
-                    "Time (s)", "Track ID", "Class", "Class ID", "Confidence",
+                    "Frame index", "Time (s)", "Track ID", "Class", "Class ID", "Confidence",
                     "X", "Y", "Width", "Height",
                 ])
                 m1, m2, m3 = st.columns(3)
