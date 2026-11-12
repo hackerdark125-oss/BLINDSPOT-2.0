@@ -13,10 +13,17 @@ from blindspot.engine import sample_video, prioritise_cells
 from blindspot.live import capture_live_source
 from blindspot.calibration import calibrate_camera, load_calibration_json, undistort_frame
 from blindspot.people import process_video as process_people_video
+from blindspot.ai_detection import YOLODetector, process_video as process_ai_video
 from blindspot.stereo import (
     calibrate_stereo_cameras, load_stereo_calibration_json,
     rectify_and_compute_depth,
 )
+
+
+@st.cache_resource(show_spinner=False)
+def get_yolo_detector(weights: str):
+    """Cache loaded YOLO models between Streamlit reruns."""
+    return YOLODetector(weights)
 
 st.set_page_config(page_title="BlindSpot 2.0", page_icon="◉", layout="wide")
 st.title("◉ BLINDSPOT 2.0")
@@ -34,7 +41,7 @@ with st.sidebar:
     grid = st.selectbox("Confidence map resolution", [4, 6, 8, 12], index=2)
     review_count = st.slider("Weak regions to show", 3, 20, 5)
 
-mode = st.radio("Analysis source", ["Recorded videos", "Live webcam / RTSP", "Person detection & tracking", "Camera calibration"], horizontal=True)
+mode = st.radio("Analysis source", ["Recorded videos", "Live webcam / RTSP", "Person detection & tracking", "AI object detection & tracking", "Camera calibration"], horizontal=True)
 
 
 def render_results(name: str, results, live: bool = False) -> pd.DataFrame:
@@ -252,6 +259,107 @@ elif mode == "Person detection & tracking":
                 st.warning("No pedestrians were detected in the sampled frames.")
         except Exception as exc:
             st.error(f"Person detection failed: {exc}")
+
+elif mode == "AI object detection & tracking":
+    st.subheader("AI object detection and multi-object tracking")
+    st.info(
+        "Uses YOLO11 for object detection and ByteTrack for persistent IDs. "
+        "The optional model package and pretrained weights are downloaded separately. "
+        "Tracking IDs can switch after long occlusions or scene cuts."
+    )
+    ai_upload = st.file_uploader(
+        "Upload a video for AI object tracking",
+        type=["mp4", "avi", "mov", "mkv"], key="ai_tracking_video",
+    )
+    ai_col1, ai_col2, ai_col3 = st.columns(3)
+    with ai_col1:
+        ai_weights = st.selectbox("Model size", ["yolo11n.pt", "yolo11s.pt"], index=0)
+        ai_stride = st.slider("Process every Nth frame", 1, 20, 3, key="ai_stride")
+    with ai_col2:
+        ai_confidence = st.slider("Detection confidence", 0.05, 0.95, 0.25, 0.05)
+        ai_image_size = st.select_slider("Inference image size", options=[320, 416, 512, 640, 768, 960], value=640)
+    with ai_col3:
+        class_options = {
+            "person": 0, "bicycle": 1, "car": 2, "motorcycle": 3,
+            "bus": 5, "train": 6, "truck": 7, "boat": 8,
+        }
+        selected_labels = st.multiselect(
+            "Object classes",
+            list(class_options),
+            default=["person", "car", "motorcycle", "bus", "truck"],
+        )
+    if ai_upload and st.button("Run AI detection and tracking", type="primary"):
+        if not selected_labels:
+            st.warning("Select at least one object class.")
+        else:
+            suffix = Path(ai_upload.name).suffix or ".mp4"
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    tmp.write(ai_upload.getvalue())
+                    ai_video_path = tmp.name
+                try:
+                    with st.spinner("Loading YOLO weights and tracking objects with ByteTrack..."):
+                        detector = get_yolo_detector(ai_weights)
+                        ai_results = process_ai_video(
+                            ai_video_path,
+                            sample_every_frames=ai_stride,
+                            max_samples=max_frames,
+                            weights=ai_weights,
+                            classes=[class_options[label] for label in selected_labels],
+                            confidence=ai_confidence,
+                            image_size=ai_image_size,
+                            detector=detector,
+                        )
+                finally:
+                    Path(ai_video_path).unlink(missing_ok=True)
+
+                observations = []
+                track_ids = set()
+                class_counts = {}
+                for result in ai_results:
+                    st.image(
+                        cv2.cvtColor(result.annotated_frame, cv2.COLOR_BGR2RGB),
+                        caption=f"Time {result.timestamp_seconds:.2f}s · "
+                                f"{len(result.detections)} object(s)",
+                        use_container_width=True,
+                    )
+                    for item in result.detections:
+                        if item.track_id is not None:
+                            track_ids.add(item.track_id)
+                        class_counts[item.class_name] = class_counts.get(item.class_name, 0) + 1
+                        observations.append({
+                            "Time (s)": result.timestamp_seconds,
+                            "Track ID": item.track_id,
+                            "Class": item.class_name,
+                            "Class ID": item.class_id,
+                            "Confidence": item.confidence,
+                            "X": item.x, "Y": item.y,
+                            "Width": item.width, "Height": item.height,
+                        })
+                ai_df = pd.DataFrame(observations, columns=[
+                    "Time (s)", "Track ID", "Class", "Class ID", "Confidence",
+                    "X", "Y", "Width", "Height",
+                ])
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Frames processed", len(ai_results))
+                m2.metric("Unique tracked IDs", len(track_ids))
+                m3.metric("Object observations", len(observations))
+                if class_counts:
+                    st.write("**Detections by class**")
+                    st.bar_chart(pd.Series(class_counts, name="Observations"))
+                st.dataframe(ai_df, use_container_width=True, hide_index=True)
+                st.download_button(
+                    "Download AI tracking results (CSV)",
+                    ai_df.to_csv(index=False).encode("utf-8"),
+                    file_name="blindspot_ai_object_tracking.csv",
+                    mime="text/csv",
+                )
+                if not observations:
+                    st.warning("No selected objects were detected in the sampled frames.")
+            except ImportError as exc:
+                st.error(str(exc))
+            except Exception as exc:
+                st.error(f"AI object tracking failed: {exc}")
 
 else:
     st.subheader("Camera calibration")
