@@ -72,6 +72,15 @@ Use a short clip containing several clearly visible, upright pedestrians.
 - [ ] Run `python scripts/benchmark_depth.py --input depth_samples.csv --output depth_benchmark.json` and archive the JSON report.
 - [ ] Do not use the depth estimate for navigation, flight control, or safety decisions.
 
+## 6.2 Image-quality score agreement benchmark
+
+- [ ] Export the per-cell quality-label template from the dashboard.
+- [ ] Fill `reference_score` using a documented human rubric; label cells without seeing the model score where practical to reduce bias.
+- [ ] Keep the same scoring rubric across lighting, distance, blur, exposure, and scene conditions.
+- [ ] Run `python scripts/benchmark_quality.py --input quality_labels.csv --output quality_benchmark.json`.
+- [ ] Record sample count, MAE, RMSE, bias, correlations, and score-bin summaries for each condition.
+- [ ] Do not call the score calibrated or validated until it has been evaluated on a separate held-out labelled set.
+
 ## 7. Release evidence
 
 Before calling the project field-validated, attach:
@@ -97,6 +106,8 @@ The repository can be considered **software-complete for its documented prototyp
 - [ ] Record precision, recall, F1, mean matched IoU, false positives, false negatives, and ID switches.
 - [ ] Measure inference latency separately on the target machine and record the hardware, model size, image size, and frame stride.
 - [ ] Repeat in daylight, low light, crowded scenes, and partial occlusion; keep each condition's result separate.
+
+The quality-score benchmark measures agreement with supplied human labels; it does not establish probabilistic calibration or generalisation without a held-out dataset.
 
 The depth benchmark is only as reliable as the manually measured target distances and selected target regions. It reports error metrics but does not establish general depth accuracy.
 
