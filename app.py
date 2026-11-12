@@ -20,10 +20,12 @@ from blindspot.stereo import (
 )
 
 
-@st.cache_resource(show_spinner=False)
 def get_yolo_detector(weights: str):
-    """Cache loaded YOLO models between Streamlit reruns."""
-    return YOLODetector(weights)
+    """Cache one YOLO detector per Streamlit session to isolate ByteTrack state."""
+    detectors = st.session_state.setdefault("_blindspot_yolo_detectors", {})
+    if weights not in detectors:
+        detectors[weights] = YOLODetector(weights)
+    return detectors[weights]
 
 st.set_page_config(page_title="BlindSpot 2.0", page_icon="◉", layout="wide")
 st.title("◉ BLINDSPOT 2.0")
@@ -41,7 +43,13 @@ with st.sidebar:
     grid = st.selectbox("Confidence map resolution", [4, 6, 8, 12], index=2)
     review_count = st.slider("Weak regions to show", 3, 20, 5)
 
-mode = st.radio("Analysis source", ["Recorded videos", "Live webcam / RTSP", "Person detection & tracking", "AI object detection & tracking", "AI live webcam / RTSP", "Camera calibration"], horizontal=True)
+mode = st.selectbox(
+    "Analysis source",
+    [
+        "Recorded videos", "Live webcam / RTSP", "Person detection & tracking",
+        "AI object detection & tracking", "AI live webcam / RTSP", "Camera calibration",
+    ],
+)
 
 
 def render_results(name: str, results, live: bool = False) -> pd.DataFrame:
