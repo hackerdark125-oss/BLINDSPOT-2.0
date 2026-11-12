@@ -989,7 +989,7 @@ else:
                             local_cloud = depth_to_point_cloud(
                                 depth_result.depth_map, rectified_k,
                                 color_image=depth_result.rectified_a,
-                                valid_mask=depth_result.valid_mask, stride=int(vo_stride),
+                                valid_mask=frame_valid_mask, stride=int(vo_stride),
                             )
                             if len(local_cloud) == 0:
                                 skipped += 1
@@ -1006,6 +1006,7 @@ else:
                             })
                             previous_frame = depth_result.rectified_a
                             previous_depth = depth_result.depth_map
+                            previous_valid_mask = frame_valid_mask
                             processed += 1
                     except Exception as frame_exc:
                         skipped += 1

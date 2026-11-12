@@ -232,8 +232,6 @@ Open **Camera calibration → Uncertainty calibration**. Upload two separate CSV
 
 Do not feed the existing 0–100 image-quality heuristic directly into this probability calibrator. It must first be converted into a meaningful confidence estimate with independently labelled outcomes, and any conversion must be evaluated without data leakage. Better calibration metrics are not guaranteed; report the held-out results even when calibration makes them worse.
 
-- Optional YOLO-based dynamic-object masking for stereo visual odometry and point-cloud fusion (requires `requirements-ai.txt`)
-
 
 ### Dynamic-object masking for 3D fusion
 
