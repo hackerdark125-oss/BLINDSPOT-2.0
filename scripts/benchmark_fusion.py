@@ -4,9 +4,13 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
 import time
 
 import numpy as np
+
+# Make direct execution (python scripts/benchmark_fusion.py) resolve the repo package.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from blindspot.multicam import fuse_multicamera_point_clouds
 
