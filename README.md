@@ -254,3 +254,19 @@ their correctness, estimate absolute position, or provide full SE(3) SLAM.
 Incorrect constraints can make the trajectory worse. It is intended for short
 trajectories and should be evaluated against measured reference paths before
 being used in any operational setting.
+
+
+## Dashboard loop-closure drift correction
+
+The **Stereo visual odometry & 3D fusion** dashboard includes an optional
+loop-closure correction panel after the raw scene is reconstructed. Enter the
+start/end rows and an independently measured world-frame displacement in the
+calibrated distance unit. The NumPy pose-graph solver distributes the residual
+across the trajectory while anchoring its first position, then the dashboard
+re-fuses the original frame clouds using corrected camera translations.
+
+This is a manually supplied constraint workflow, not automatic loop-closure
+detection. Only use a displacement supported by a verified revisit or external
+measurement. The optimiser currently adjusts translations only; rotations are
+unchanged. Incorrect loop closures can worsen the trajectory, so preserve and
+compare raw and corrected exports against measured reference positions.
