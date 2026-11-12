@@ -1154,7 +1154,7 @@ else:
             "using a verified camera-to-world pose for each camera."
         )
         st.warning(
-            "Upload ASCII PLY files exported by BLINDSPOT and a pose JSON with matching camera IDs. "
+            "Upload XYZRGB PLY files (ASCII or binary) and a pose JSON with matching camera IDs. "
             "All poses must use one verified world coordinate frame and the same distance unit. "
             "This workflow does not estimate camera extrinsics or synchronize recordings."
         )
