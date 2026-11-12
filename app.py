@@ -362,6 +362,18 @@ elif mode == "AI object detection & tracking":
                     file_name="blindspot_ai_object_tracking.csv",
                     mime="text/csv",
                 )
+                frame_metrics_df = pd.DataFrame([{
+                    "Frame index": result.frame_index,
+                    "Time (s)": result.timestamp_seconds,
+                    "Inference (ms)": result.inference_time_ms,
+                    "Detections": len(result.detections),
+                } for result in ai_results])
+                st.download_button(
+                    "Download per-frame performance (CSV)",
+                    frame_metrics_df.to_csv(index=False).encode("utf-8"),
+                    file_name="blindspot_ai_frame_performance.csv",
+                    mime="text/csv",
+                )
                 if not observations:
                     st.warning("No selected objects were detected in the sampled frames.")
             except ImportError as exc:
