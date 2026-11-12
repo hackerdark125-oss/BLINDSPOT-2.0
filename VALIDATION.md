@@ -198,3 +198,14 @@ The included evaluator uses greedy class-aware IoU matching and counts ID change
 - [ ] Evaluate only with independently verified revisit constraints; compare raw and corrected trajectory error against measured reference positions.
 - [ ] Test multiple loop closures, long trajectories, and outlier constraints before considering a robust loss or full SE(3) optimiser.
 - [ ] Confirm rotations are unchanged and document the translation-only limitation.
+
+
+## 6.12 Dashboard loop-closure correction
+
+- [ ] Reconstruct a short stereo sequence and export the raw trajectory/PLY.
+- [ ] Confirm the loop-closure panel requires two distinct trajectory rows.
+- [ ] Enter an independently measured displacement in the stereo calibration distance unit and apply the correction.
+- [ ] Confirm the first trajectory position remains anchored and the end-to-start displacement approaches the supplied constraint.
+- [ ] Inspect the corrected PLY and trajectory CSV; compare raw and corrected outputs against measured reference positions.
+- [ ] Try an invalid or unsupported constraint and confirm the dashboard reports the error without crashing.
+- [ ] Never use a guessed loop-closure displacement or describe manual constraints as automatic loop-closure detection.
