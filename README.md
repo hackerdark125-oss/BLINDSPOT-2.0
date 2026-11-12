@@ -129,7 +129,7 @@ MIT
 
 ## Quantitative detection and tracking benchmark
 
-The benchmark utility compares YOLO/ByteTrack predictions with manually labelled ground truth. It reports precision, recall, F1, false positives/negatives, mean matched IoU, consecutive-sampled-frame ID switches, and inference-only throughput estimated from measured per-frame inference latency. ByteTrack state is reset between separate video uploads so IDs do not leak from one clip into the next. The app exports an object-level AI tracking CSV and a separate per-frame performance CSV (including frames with zero detections). Use the object-level file as predictions and pass the performance file with --timings for an unbiased per-sampled-frame latency summary. Metrics are meaningful only when labels are accurate and both CSV files use the same sampled frame indices.
+The benchmark utility compares YOLO/ByteTrack predictions with manually labelled ground truth. It reports precision, recall, F1, false positives/negatives, mean matched IoU, consecutive-sampled-frame ID switches, and per-sampled-frame YOLO+ByteTrack processing throughput. ByteTrack state is reset between separate video uploads so IDs do not leak from one clip into the next. The app exports an object-level AI tracking CSV and a separate per-frame performance CSV (including frames with zero detections). Use the object-level file as predictions and pass the performance file with --timings for an unbiased per-sampled-frame latency summary. Metrics are meaningful only when labels are accurate and both CSV files use the same sampled frame indices.
 
 Create ground-truth and prediction CSV files with this header:
 
@@ -145,4 +145,4 @@ Run the evaluator:
 python scripts/benchmark_tracking.py --ground-truth ground_truth.csv --predictions predictions.csv --timings blindspot_ai_frame_performance.csv --output benchmark.json --iou 0.5
 ```
 
-Matching uses greedy class-aware IoU. ID switches count only when an object is matched to a different predicted ID on the immediately following evaluated sample (even when source frame indices skip due to sampling). This is a project diagnostic, not a full MOTChallenge/HOTA/IDF1 implementation. Do not infer FPS from video duration; measure inference latency directly.
+Matching uses greedy class-aware IoU. ID switches count only when an object is matched to a different predicted ID on the immediately following evaluated sample (even when source frame indices skip due to sampling). This is a project diagnostic, not a full MOTChallenge/HOTA/IDF1 implementation. Do not infer FPS from video duration; measure per-frame YOLO+ByteTrack processing time directly.
