@@ -36,12 +36,20 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ground-truth", required=True, help="CSV with frame_index,track_id,class_id,x,y,width,height")
     parser.add_argument("--predictions", required=True, help="CSV with the same schema or the app's AI tracking export")
+    parser.add_argument("--timings", help="Optional per-frame performance CSV exported by the app")
     parser.add_argument("--output", default="benchmark.json", help="Output JSON path")
     parser.add_argument("--iou", type=float, default=0.5, help="IoU matching threshold (default: 0.5)")
     args = parser.parse_args()
     prediction_rows = read_rows(args.predictions)
     # The app exports one row per object, so count each sampled frame once.
     inference_times = extract_frame_inference_times(prediction_rows)
+    if args.timings:
+        timing_rows = read_rows(args.timings)
+        inference_times = [
+            float(row.get("Inference (ms)") or row.get("inference_time_ms"))
+            for row in timing_rows
+            if row.get("Inference (ms)") or row.get("inference_time_ms")
+        ]
     metrics = evaluate_tracking(
         read_rows(args.ground_truth), prediction_rows, args.iou,
         inference_times_ms=inference_times or None,
