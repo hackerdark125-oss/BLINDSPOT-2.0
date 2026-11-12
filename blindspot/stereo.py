@@ -167,6 +167,7 @@ class StereoDepthResult:
     translation_unit: str
     rectified_camera_matrix: np.ndarray | None = None
     rectification_rotation: np.ndarray | None = None
+    confidence_map: np.ndarray | None = None
 
 
 def load_stereo_calibration_json(content: str) -> StereoCalibration:
@@ -283,13 +284,26 @@ def rectify_and_compute_depth(
     sampled_right = np.full(disparity.shape, np.nan, dtype=np.float32)
     rows = np.broadcast_to(np.arange(height, dtype=np.int32)[:, None], disparity.shape)
     sampled_right[in_bounds] = disparity_right[rows[in_bounds], right_x[in_bounds]]
+    consistency_error = np.abs(disparity + sampled_right)
     valid = (
         np.isfinite(disparity)
         & (disparity > 0)
         & np.isfinite(sampled_right)
         & (sampled_right < 0)
-        & (np.abs(disparity + sampled_right) <= left_right_consistency_threshold)
+        & (consistency_error <= left_right_consistency_threshold)
     )
+    # Confidence combines left-right agreement with local image texture.
+    # It is a relative quality score, not a calibrated probability of correctness.
+    consistency_confidence = np.exp(
+        -consistency_error / float(left_right_consistency_threshold)
+    )
+    local_mean = cv2.blur(gray_a.astype(np.float32), (block_size, block_size))
+    local_square_mean = cv2.blur(gray_a.astype(np.float32) ** 2, (block_size, block_size))
+    local_std = np.sqrt(np.maximum(local_square_mean - local_mean ** 2, 0.0))
+    texture_confidence = local_std / (local_std + 8.0)
+    confidence = (consistency_confidence * texture_confidence).astype(np.float32)
+    confidence[~valid] = 0.0
+
     points_3d = cv2.reprojectImageTo3D(disparity, q_matrix)
     depth = points_3d[:, :, 2].astype(np.float32)
     valid &= np.isfinite(depth) & (depth > 0)
@@ -297,5 +311,5 @@ def rectify_and_compute_depth(
 
     return StereoDepthResult(
         rectified_a, rectified_b, disparity, depth, valid, stereo.translation_unit,
-        projection_a[:3, :3], rect_a,
+        projection_a[:3, :3], rect_a, confidence,
     )
