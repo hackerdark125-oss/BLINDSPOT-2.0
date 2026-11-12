@@ -167,9 +167,11 @@ Each sampled frame is divided into a configurable grid. Every cell receives a he
 - [x] Planar two-camera ground-footprint and overlap estimator using supplied camera pose
 - [x] Stereo visual odometry and depth-based 3D point-cloud reconstruction (local trajectory; drift remains possible)
 - [x] Geometric planar two-camera coverage and multi-camera point-cloud fusion using supplied camera poses
-- [x] Manual loop-closure translation constraints and pose-graph drift correction
-- [ ] Automatic visual localisation and loop-closure detection with full 6DoF pose-graph optimisation
-- [ ] Ground-truth-validated arbitrary 3D coverage reconstruction and automatic multi-camera extrinsic calibration
+- [x] Manual translation-only and full SE(3) pose-graph correction using independently verified relative-pose constraints
+- [x] Multi-camera rig pose composition from pairwise stereo extrinsics, with cycle-residual diagnostics
+- [x] Optional ICP registration/refinement for overlapping multi-camera point clouds
+- [ ] Automatic metric loop-closure verification and relative-pose constraint generation
+- [ ] Ground-truth-validated arbitrary 3D coverage reconstruction and fully automatic calibration-target capture/synchronisation/global rig optimisation
 - [x] Quality-score agreement evaluator and per-cell human-label export tooling
 - [ ] Validated uncertainty model and representative benchmark dataset
 - [x] Quantitative stereo-depth benchmark evaluator and CLI for known-distance samples
@@ -347,18 +349,18 @@ its results are hardware-dependent and are not real-scene accuracy evidence.
 
 ## Dashboard loop-closure drift correction
 
-The **Stereo visual odometry & 3D fusion** dashboard includes an optional
-loop-closure correction panel after the raw scene is reconstructed. Enter the
-start/end rows and an independently measured world-frame displacement in the
-calibrated distance unit. The NumPy pose-graph solver distributes the residual
-across the trajectory while anchoring its first position, then the dashboard
-re-fuses the original frame clouds using corrected camera translations.
+The **Stereo visual odometry & 3D fusion** dashboard includes two optional
+correction workflows after the raw scene is reconstructed. The translation-only
+panel accepts an independently measured world-frame displacement. The advanced
+full SE(3) panel accepts a measured relative rotation (roll/pitch/yaw, using
+Rz · Ry · Rx) and translation between two trajectory rows, then jointly adjusts
+camera rotations and translations. Both workflows re-fuse the original frame
+clouds and export corrected PLY/trajectory files.
 
-This is a manually supplied constraint workflow, not automatic loop-closure
-detection. Only use a displacement supported by a verified revisit or external
-measurement. The optimiser currently adjusts translations only; rotations are
-unchanged. Incorrect loop closures can worsen the trajectory, so preserve and
-compare raw and corrected exports against measured reference positions.
+These are manually supplied constraint workflows, not automatic metric
+loop-closure detection. Only use measurements supported by a verified revisit
+or external reference. Incorrect constraints can worsen the trajectory, so
+preserve and compare raw and corrected exports against measured reference poses.
 
 
 ## Dashboard multi-camera 3D fusion
@@ -385,9 +387,7 @@ PLY per camera (the filename stem is the camera ID) and a shared pose JSON:
 The pose for each camera maps camera-local coordinates into the common world
 frame. Camera IDs must match PLY filename stems exactly. The dashboard previews
 a sampled fused point cloud and exports a fused PLY plus a JSON summary.
-ASCII and binary little-/big-endian PLY 1.0 are supported. XYZRGB vertex properties may be reordered or include extra scalar fields; list-valued vertex properties and non-vertex elements before vertices are rejected. Extrinsics must already be
-calibrated/verified; this workflow does not estimate camera poses or guarantee
-overlap registration.
+ASCII and binary little-/big-endian PLY 1.0 are supported. XYZRGB vertex properties may be reordered or include extra scalar fields; list-valued vertex properties and non-vertex elements before vertices are rejected. The optional ICP refinement can align overlapping clouds from the supplied initial poses; inspect fitness and RMSE because ICP is local and does not guarantee correct registration.
 
 
 ## Full SE(3) pose-graph optimisation
@@ -493,3 +493,18 @@ The **Camera calibration** workspace now includes:
 - **Multi-camera PLY fusion**: optionally run ICP against a selected reference cloud before fusion. Review fitness/RMSE and keep in mind that ICP is a local optimiser.
 - **Stereo visual odometry & 3D fusion**: use the full 6DoF pose-graph correction panel with an independently measured relative rotation (roll/pitch/yaw) and translation. The existing translation-only correction remains available.
 - **Stereo depth preview**: inspect and export the relative confidence map alongside disparity and depth. Confidence is a heuristic, not a calibrated probability.
+
+
+## Multi-camera rig pose composition
+
+Open **Camera calibration → Multi-camera rig calibration**. Supply a JSON file
+containing camera IDs, an anchor camera, a common distance unit, and pairwise
+stereo extrinsics in the convention `X_j = R_ji X_i + t_ji`. The dashboard
+composes the connected pairwise graph into shared camera-to-world poses and
+reports redundant-edge cycle residuals. Export the resulting pose JSON and use
+it in the multi-camera PLY fusion workflow.
+
+This composes existing pairwise stereo calibrations; it does not automatically
+capture or detect calibration targets, synchronize sensors, or globally
+optimise all noisy pairwise measurements. A connected graph is not proof of
+metric accuracy. Verify the rig against an independent measurement before use.
