@@ -868,8 +868,9 @@ else:
         st.warning(
             "Use fixed, synchronized cameras with the same resolution and calibration. "
             "This is local stereo visual odometry and drift can accumulate. An optional "
-            "manual translation-only correction accepts an independently verified loop-closure "
-            "constraint; candidate retrieval is available, but automatic metric loop-closure verification, pose-constraint generation, and full 6DoF SLAM are not implemented."
+            "optional translation-only and full 6DoF pose-graph correction tools accept independently "
+            "verified relative-pose constraints. Candidate retrieval is available, but automatic metric "
+            "loop-closure verification and pose-constraint generation are not implemented."
         )
         left, right = st.columns(2)
         with left:
