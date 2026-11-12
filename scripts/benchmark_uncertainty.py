@@ -4,8 +4,12 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
 
 import pandas as pd
+
+# Ensure direct script execution resolves the repository package.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from blindspot.uncertainty import (
     apply_isotonic_calibrator,
