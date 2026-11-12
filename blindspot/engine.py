@@ -28,6 +28,8 @@ class FrameAnalysis:
     motion_magnitude_map: np.ndarray | None = None
     motion_age_seconds: np.ndarray | None = None
     mean_motion: float | None = None
+    camera_motion_compensated: bool = False
+    scene_changed: bool = False
 
 
 def _validate_grid_size(grid_size: int) -> None:
