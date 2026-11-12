@@ -342,10 +342,16 @@ elif mode == "AI object detection & tracking":
                     "Frame index", "Time (s)", "Inference (ms)", "Track ID", "Class", "Class ID", "Confidence",
                     "X", "Y", "Width", "Height",
                 ])
-                m1, m2, m3 = st.columns(3)
+                mean_inference_ms = float(np.mean([r.inference_time_ms for r in ai_results]))
+                m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Frames processed", len(ai_results))
                 m2.metric("Unique tracked IDs", len(track_ids))
                 m3.metric("Object observations", len(observations))
+                m4.metric("Mean inference", f"{mean_inference_ms:.1f} ms")
+                st.caption(
+                    f"Inference-only throughput: {1000.0 / mean_inference_ms:.1f} FPS · "
+                    "excludes video decoding, rendering, and CSV export"
+                )
                 if class_counts:
                     st.write("**Detections by class**")
                     st.bar_chart(pd.Series(class_counts, name="Observations"))
