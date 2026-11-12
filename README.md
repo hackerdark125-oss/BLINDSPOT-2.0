@@ -26,10 +26,10 @@ BlindSpot 2.0 is an experimental computer-vision research prototype that highlig
 - Planar two-camera ground-footprint and overlap estimation from calibrated stereo pose
 - Stereo visual odometry, depth-to-3D point-cloud reconstruction, and PLY export
 - Optional tracked-object masking during reconstruction to reduce moving-object contamination
-- ORB/RANSAC visual loop-closure candidate retrieval plus full SE(3) pose-graph optimisation using independently verified relative-pose constraints
-- Multi-camera XYZRGB point-cloud fusion using calibrated poses, plus a separate ICP rigid point-cloud registration API for overlapping clouds
+- ORB/RANSAC visual loop-closure candidate retrieval plus dashboard full SE(3) pose-graph correction using independently verified relative-pose constraints
+- Multi-camera XYZRGB point-cloud fusion using calibrated poses, pairwise extrinsic rig composition, and optional ICP rigid cloud registration/refinement
 - ASCII and binary little-/big-endian PLY 1.0 import, plus a batch fusion CLI and JSON summaries
-- Stereo rectification, SGBM disparity estimation with bidirectional left-right consistency rejection, per-pixel relative depth confidence, and depth-map CSV export
+- Stereo rectification, SGBM disparity estimation with bidirectional left-right consistency rejection, per-pixel relative confidence heatmap/CSV export, and depth-map CSV export
 - CSV-based stereo-depth benchmark CLI for MAE, RMSE, relative error, and valid-pixel coverage
 - Ground-truth trajectory benchmark reporting ATE and relative translation/rotation errors
 - Calibration JSON export and undistortion preview
@@ -483,3 +483,13 @@ CSV and reports the mean score plus Pearson correlation between per-target
 confidence and absolute depth error. Use this diagnostic only with independent
 measured targets and enough varied samples; correlation is not probability
 calibration and can be unstable on small datasets.
+
+
+### Dashboard reconstruction controls
+
+The **Camera calibration** workspace now includes:
+
+- **Multi-camera rig calibration**: upload pairwise stereo extrinsics, select an anchor camera, inspect cycle residuals, and export shared camera-to-world poses.
+- **Multi-camera PLY fusion**: optionally run ICP against a selected reference cloud before fusion. Review fitness/RMSE and keep in mind that ICP is a local optimiser.
+- **Stereo visual odometry & 3D fusion**: use the full 6DoF pose-graph correction panel with an independently measured relative rotation (roll/pitch/yaw) and translation. The existing translation-only correction remains available.
+- **Stereo depth preview**: inspect and export the relative confidence map alongside disparity and depth. Confidence is a heuristic, not a calibrated probability.

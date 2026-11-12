@@ -208,6 +208,7 @@ The included evaluator uses greedy class-aware IoU matching and counts ID change
 - [ ] Compare translation-only and full SE(3) optimisation against the same measured reference trajectory.
 - [ ] Record initial/final solver cost, iteration count, convergence flag, and raw/corrected ATE/RPE.
 - [ ] Test outlier constraints and poor initial poses; preserve the raw trajectory for comparison.
+- [ ] In the dashboard, verify the 6DoF panel uses the documented Rz · Ry · Rx Euler convention and exports both corrected PLY and trajectory CSV.
 - [ ] Confirm the first pose remains anchored and that incorrect constraints can still deform the trajectory.
 
 
@@ -272,10 +273,11 @@ The included evaluator uses greedy class-aware IoU matching and counts ID change
 - [ ] Repeat with different voxel sizes and correspondence thresholds; retain original poses if registration quality is poor.
 - [ ] Test low overlap, symmetric/repetitive geometry, and bad initial alignment; ICP may converge to a local minimum.
 - [ ] Compare automatic registration with independent camera extrinsics before using the result for multi-camera fusion.
+- [ ] In the dashboard, verify the selected reference camera remains fixed and every other camera reports ICP fitness/RMSE before fused output is accepted.
 
 ## 6.16 Stereo confidence and ground-truth trajectory benchmarks
 
-- [ ] Inspect the per-pixel stereo confidence map; verify invalid depth pixels receive zero confidence and all scores remain in [0, 1].
+- [ ] Inspect the per-pixel stereo confidence map in the dashboard and downloaded CSV; verify invalid depth pixels receive zero confidence and all scores remain in [0, 1].
 - [ ] Compare confidence bins with independently measured depth errors and coverage on held-out scenes; do not call the heuristic a probability without calibration evidence.
 - [ ] Export estimated and ground-truth camera-to-world trajectories as equal-length JSON arrays of 4x4 matrices.
 - [ ] Run `python scripts/benchmark_trajectory.py --estimated estimated_poses.json --ground-truth ground_truth_poses.json --output trajectory_benchmark.json`.

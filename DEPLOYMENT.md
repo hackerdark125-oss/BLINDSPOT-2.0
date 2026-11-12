@@ -52,3 +52,10 @@ The dashboard remains the primary application entry point. Advanced reconstructi
 - `scripts/benchmark_trajectory.py`: evaluate exported estimated poses against an independent ground-truth JSON trajectory.
 
 These tools run inside the same Python environment/container. For large point clouds or long trajectories, size CPU and memory accordingly. Do not expose camera streams publicly; use trusted network paths and keep stream credentials outside source control.
+
+
+The dashboard's advanced reconstruction workflows are available under
+**Camera calibration**. Build the Docker image after updating the repository;
+the image health check validates Streamlit startup, not connected camera access
+or reconstruction accuracy. Camera rig JSON, PLY inputs, and calibration files
+should be retained with the output reports for reproducibility.
