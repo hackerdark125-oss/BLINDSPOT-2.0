@@ -209,3 +209,14 @@ The included evaluator uses greedy class-aware IoU matching and counts ID change
 - [ ] Run `python scripts/benchmark_fusion.py --cameras 2 --points-per-camera 100000 --output fusion_benchmark.json` and record hardware, runtime, input/output point counts, and voxel size.
 - [ ] Repeat with actual calibrated cameras and measured reference geometry; inspect overlap seams and duplicate surfaces.
 - [ ] Do not interpret a successful fusion operation as proof that camera extrinsics or synchronization are accurate.
+
+
+## 6.12 Dashboard loop-closure correction
+
+- [ ] Reconstruct a short stereo sequence and export the raw trajectory/PLY.
+- [ ] Confirm the loop-closure panel requires two distinct trajectory rows.
+- [ ] Enter an independently measured displacement in the stereo calibration distance unit and apply the correction.
+- [ ] Confirm the first trajectory position remains anchored and the end-to-start displacement approaches the supplied constraint.
+- [ ] Inspect the corrected PLY and trajectory CSV; compare raw and corrected outputs against measured reference positions.
+- [ ] Try an invalid or unsupported constraint and confirm the dashboard reports the error without crashing.
+- [ ] Never use a guessed loop-closure displacement or describe manual constraints as automatic loop-closure detection.
