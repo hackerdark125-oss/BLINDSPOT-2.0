@@ -32,6 +32,8 @@ from blindspot.uncertainty import (
 from blindspot.pose_graph import optimize_pose_graph_translations
 from blindspot.loop_closure import detect_loop_closure_candidates
 from blindspot.multicam import fuse_multicamera_point_clouds
+from blindspot.camera_rig import estimate_camera_rig_poses
+from blindspot.registration import register_point_cloud_icp
 from blindspot.ply import read_ascii_ply
 
 
@@ -490,7 +492,7 @@ else:
     st.subheader("Camera calibration")
     calibration_mode = st.radio(
         "Calibration workflow",
-        ["Single-camera intrinsics", "Two-camera stereo extrinsics", "Stereo depth preview", "Stereo visual odometry & 3D fusion", "Multi-camera PLY fusion", "Planar coverage preview", "Uncertainty calibration"],
+        ["Single-camera intrinsics", "Two-camera stereo extrinsics", "Stereo depth preview", "Stereo visual odometry & 3D fusion", "Multi-camera rig calibration", "Multi-camera PLY fusion", "Planar coverage preview", "Uncertainty calibration"],
         horizontal=True,
     )
     if calibration_mode == "Uncertainty calibration":
@@ -1191,6 +1193,86 @@ else:
                 for temp_path in temp_paths:
                     Path(temp_path).unlink(missing_ok=True)
 
+    elif calibration_mode == "Multi-camera rig calibration":
+        st.write(
+            "Compose pairwise stereo extrinsics into a common camera-to-world rig frame. "
+            "Calibrate each connected camera pair first, then provide their relative transforms."
+        )
+        st.warning(
+            "This composes pairwise calibrations; it does not detect chessboards, synchronize cameras, "
+            "or repair inaccurate pairwise calibration. All translation vectors must use the same unit."
+        )
+        rig_example = {
+            "distance_unit": "cm",
+            "anchor_camera_id": "camera_1",
+            "camera_ids": ["camera_1", "camera_2", "camera_3"],
+            "pairwise_extrinsics": [
+                {"camera_i": "camera_1", "camera_j": "camera_2",
+                 "rotation_matrix": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+                 "translation_vector": [-25, 0, 0]},
+                {"camera_i": "camera_2", "camera_j": "camera_3",
+                 "rotation_matrix": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+                 "translation_vector": [-25, 0, 0]},
+            ],
+        }
+        st.download_button(
+            "Download example camera-rig calibration JSON",
+            json.dumps(rig_example, indent=2).encode("utf-8"),
+            file_name="blindspot_camera_rig_example.json",
+            mime="application/json",
+        )
+        rig_file = st.file_uploader(
+            "Pairwise stereo extrinsics JSON", type=["json"], key="camera_rig_edges"
+        )
+        if st.button("Build camera rig", type="primary", disabled=not rig_file, key="build_camera_rig"):
+            try:
+                document = json.loads(rig_file.getvalue().decode("utf-8"))
+                camera_ids = document.get("camera_ids")
+                anchor_id = document.get("anchor_camera_id")
+                distance_unit = document.get("distance_unit", "unspecified")
+                if not isinstance(distance_unit, str) or not distance_unit.strip():
+                    raise ValueError("distance_unit must be a non-empty string")
+                raw_edges = document.get("pairwise_extrinsics")
+                if not isinstance(raw_edges, list) or not raw_edges:
+                    raise ValueError("pairwise_extrinsics must be a non-empty array")
+                edges = []
+                for item in raw_edges:
+                    if not isinstance(item, dict):
+                        raise ValueError("each pairwise extrinsic must be a JSON object")
+                    edges.append((
+                        item.get("camera_i"), item.get("camera_j"),
+                        item.get("rotation_matrix"), item.get("translation_vector"),
+                    ))
+                result = estimate_camera_rig_poses(camera_ids, edges, anchor_id)
+                output = {
+                    "distance_unit": distance_unit,
+                    "cameras": {
+                        camera_id: {
+                            "rotation_matrix": rotation.tolist(),
+                            "translation_vector": translation.tolist(),
+                        }
+                        for camera_id, (rotation, translation) in result.camera_poses.items()
+                    },
+                }
+                st.success(
+                    f"Built a connected rig with {len(result.connected_cameras)} cameras "
+                    f"from {result.pairwise_edges} pairwise calibrations."
+                )
+                metrics = st.columns(3)
+                metrics[0].metric("Cameras connected", len(result.connected_cameras))
+                metrics[1].metric("Mean cycle rotation error", f"{result.mean_rotation_cycle_error_degrees:.4f}°")
+                metrics[2].metric("Mean cycle translation error", f"{result.mean_translation_cycle_error:.5f} {distance_unit}")
+                st.json(output)
+                st.download_button(
+                    "Download shared camera-to-world poses JSON",
+                    json.dumps(output, indent=2).encode("utf-8"),
+                    file_name="blindspot_camera_rig_poses.json",
+                    mime="application/json",
+                    key="download_camera_rig_poses",
+                )
+            except Exception as exc:
+                st.error(f"Camera-rig composition failed: {exc}")
+
     elif calibration_mode == "Multi-camera PLY fusion":
         st.write(
             "Fuse exported camera-local XYZRGB point clouds into one shared 3D world frame "
@@ -1232,6 +1314,29 @@ else:
             min_value=0.0001, value=0.02, step=0.01, format="%.4f",
             key="multicam_voxel_size",
         )
+        auto_register = st.checkbox(
+            "Refine camera alignment with ICP before fusion",
+            value=False, key="multicam_auto_icp",
+            help="Uses overlapping clouds and the supplied poses as an initial alignment. ICP is local and may converge incorrectly.",
+        )
+        if auto_register:
+            auto_anchor_id = st.selectbox(
+                "Reference camera for ICP", 
+                [Path(upload.name).stem for upload in multi_cloud_files] if multi_cloud_files else [],
+                key="multicam_icp_anchor",
+            )
+            icp_max_distance = st.number_input(
+                "ICP maximum correspondence distance (same unit)",
+                min_value=0.0001, value=0.25, step=0.05, key="multicam_icp_distance",
+            )
+            icp_voxel_size = st.number_input(
+                "ICP sampling voxel size (same unit)",
+                min_value=0.0001, value=0.03, step=0.01, key="multicam_icp_voxel",
+            )
+        else:
+            auto_anchor_id = None
+            icp_max_distance = 0.25
+            icp_voxel_size = 0.03
         if st.button(
             "Fuse multi-camera 3D point clouds",
             type="primary",
@@ -1264,6 +1369,41 @@ else:
                         camera_poses[camera_id] = (
                             camera_pose.rotation_matrix, camera_pose.translation_vector
                         )
+                    registration_rows = []
+                    if auto_register:
+                        if auto_anchor_id not in camera_clouds:
+                            raise ValueError("Select a valid reference camera for ICP")
+                        anchor_cloud = camera_clouds[auto_anchor_id].copy()
+                        anchor_rotation, anchor_translation = camera_poses[auto_anchor_id]
+                        anchor_cloud[:, :3] = (
+                            anchor_rotation @ anchor_cloud[:, :3].T
+                        ).T + anchor_translation
+                        for camera_id in sorted(camera_clouds):
+                            if camera_id == auto_anchor_id:
+                                continue
+                            source_cloud = camera_clouds[camera_id].copy()
+                            source_rotation, source_translation = camera_poses[camera_id]
+                            source_cloud[:, :3] = (
+                                source_rotation @ source_cloud[:, :3].T
+                            ).T + source_translation
+                            icp_result = register_point_cloud_icp(
+                                source_cloud, anchor_cloud,
+                                max_correspondence_distance=float(icp_max_distance),
+                                voxel_size=float(icp_voxel_size),
+                            )
+                            camera_poses[camera_id] = (
+                                icp_result.rotation @ source_rotation,
+                                icp_result.rotation @ source_translation + icp_result.translation,
+                            )
+                            registration_rows.append({
+                                "Camera": camera_id,
+                                "Reference": auto_anchor_id,
+                                "Fitness": icp_result.fitness,
+                                "RMSE": icp_result.rmse,
+                                "Correspondences": icp_result.correspondences,
+                                "Iterations": icp_result.iterations,
+                                "Converged": icp_result.converged,
+                            })
                     fusion_result = fuse_multicamera_point_clouds(
                         camera_clouds, camera_poses, voxel_size=float(multi_voxel_size)
                     )
@@ -1284,6 +1424,13 @@ else:
                         for item in fusion_result.cameras
                     ])
                     st.dataframe(camera_summary, use_container_width=True, hide_index=True)
+                    if registration_rows:
+                        st.subheader("Automatic ICP registration diagnostics")
+                        st.warning(
+                            "Review fitness and RMSE before trusting the alignment. ICP is a local optimiser; "
+                            "low error on repetitive or low-overlap geometry can still be misleading."
+                        )
+                        st.dataframe(pd.DataFrame(registration_rows), use_container_width=True, hide_index=True)
                     preview_step = max(1, len(fusion_result.points) // 10000)
                     preview = pd.DataFrame(
                         fusion_result.points[::preview_step, :3], columns=["X", "Y", "Z"]
