@@ -23,6 +23,7 @@ BlindSpot 2.0 is an experimental computer-vision research prototype that highlig
 - Chessboard-based camera intrinsic and lens-distortion calibration
 - Paired chessboard stereo calibration for relative camera rotation and translation
 - Stereo rectification, SGBM disparity estimation, and depth-map CSV export
+- CSV-based stereo-depth benchmark CLI for MAE, RMSE, relative error, and valid-pixel coverage
 - Calibration JSON export and undistortion preview
 - Weak-region prioritisation, multi-camera comparison, and CSV exports
 - Unit tests and GitHub Actions CI
@@ -111,7 +112,7 @@ Each sampled frame is divided into a configurable grid. Every cell receives a he
 - [ ] Multi-camera time synchronisation and validated 3D coverage reconstruction
 - [ ] Geometric multi-camera coverage estimation using camera pose / visual localisation
 - [ ] Validated uncertainty model and benchmark dataset
-- [ ] Quantitative stereo-depth benchmark against known-distance scenes
+- [x] Quantitative stereo-depth benchmark evaluator and CLI for known-distance samples
 
 ## Limitations and safety
 - Image-quality and motion maps are diagnostics, not measurements of physical-world visibility or 3D coverage.
@@ -130,6 +131,24 @@ Python · OpenCV · NumPy · Pandas · Plotly · Streamlit · Pytest · GitHub A
 
 ## License
 MIT
+
+## Stereo depth benchmark
+
+The depth benchmark compares measured target distances with the median depth estimated from the corresponding target region. Create a CSV with one row per measured target/sample and these columns:
+
+```csv
+known_distance,measured_distance,valid_pixels,total_pixels,unit
+100,104,8500,10000,cm
+200,188,7600,10000,cm
+```
+
+Use the same distance unit for every row. If a target has no valid depth pixels, leave measured_distance empty and set valid_pixels to 0. Run:
+
+```bat
+python scripts/benchmark_depth.py --input depth_samples.csv --output depth_benchmark.json
+```
+
+The report contains MAE, RMSE, median absolute error, mean absolute relative error, valid-pixel percentage, and counts of measured/skipped samples. This is an evaluation utility; it does not create measured results or validate a camera rig by itself.
 
 ## Quantitative detection and tracking benchmark
 
