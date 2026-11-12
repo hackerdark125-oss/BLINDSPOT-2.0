@@ -137,3 +137,31 @@ def test_stereo_depth_pipeline_returns_expected_arrays():
     assert result.rectified_camera_matrix.shape == (3, 3)
     assert result.rectification_rotation.shape == (3, 3)
     assert np.isfinite(result.rectified_camera_matrix).all()
+
+
+def test_stereo_depth_applies_left_right_consistency_filter():
+    from blindspot.stereo import rectify_and_compute_depth
+
+    rng = np.random.default_rng(127)
+    image_a = rng.integers(0, 256, (120, 160, 3), dtype=np.uint8)
+    image_b = np.roll(image_a, -6, axis=1)
+    result = rectify_and_compute_depth(
+        image_a, image_b, make_intrinsics(), make_intrinsics(), make_stereo(),
+        num_disparities=16, block_size=3,
+        left_right_consistency_threshold=1.5,
+    )
+    assert result.valid_mask.any()
+    assert np.isfinite(result.depth_map[result.valid_mask]).all()
+    assert np.isnan(result.depth_map[~result.valid_mask]).all()
+
+
+def test_stereo_depth_consistency_threshold_is_validated():
+    from blindspot.stereo import rectify_and_compute_depth
+
+    image = np.zeros((120, 160, 3), dtype=np.uint8)
+    with pytest.raises(ValueError, match="left_right_consistency_threshold"):
+        rectify_and_compute_depth(
+            image, image, make_intrinsics(), make_intrinsics(), make_stereo(),
+            num_disparities=16, block_size=3,
+            left_right_consistency_threshold=0,
+        )
