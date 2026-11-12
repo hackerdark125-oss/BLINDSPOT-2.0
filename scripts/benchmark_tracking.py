@@ -31,7 +31,13 @@ def main() -> None:
     parser.add_argument("--iou", type=float, default=0.5, help="IoU matching threshold (default: 0.5)")
     args = parser.parse_args()
     prediction_rows = read_rows(args.predictions)
-    inference_times = [row["Inference (ms)"] for row in prediction_rows if row.get("Inference (ms)")]
+    # The app exports one row per detected object, so a frame's latency is
+    # repeated when several objects are present. Count each sampled frame once.
+    timing_by_frame = {}
+    for row in prediction_rows:
+        if row.get("Inference (ms)") not in (None, ""):
+            timing_by_frame.setdefault(row["frame_index"], float(row["Inference (ms)"]))
+    inference_times = list(timing_by_frame.values())
     metrics = evaluate_tracking(
         read_rows(args.ground_truth), prediction_rows, args.iou,
         inference_times_ms=inference_times or None,
