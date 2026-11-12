@@ -420,3 +420,12 @@ initial pose is poor, overlap is small, geometry is repetitive or symmetric, or
 units differ. Check fitness and RMSE and retain the original camera poses. It
 does not replace synchronized capture, intrinsic/stereo calibration, or an
 independent reference transform. It is not an automatic calibration guarantee.
+
+
+### Relative stereo depth confidence
+
+Each stereo depth result now includes a per-pixel `confidence_map` in [0, 1].
+The relative score combines left-right disparity agreement with local image
+texture; invalid depth pixels receive zero confidence. Low-texture and weakly
+matched regions are therefore down-weighted. This is a heuristic quality score,
+not a calibrated probability or a substitute for known-distance depth tests.
