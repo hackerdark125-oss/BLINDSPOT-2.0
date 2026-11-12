@@ -476,3 +476,10 @@ synthetic tests do not establish real-world localisation accuracy.
 - `scripts/benchmark_trajectory.py` compares estimated 4x4 camera-to-world matrices with independent ground truth and reports first-pose-aligned ATE plus consecutive relative pose errors. No scale fitting is applied.
 
 See [VALIDATION.md](VALIDATION.md) for the synthetic CI gate and separate real-camera evidence checklist, and [RELEASE.md](RELEASE.md) for release boundaries.
+
+
+The depth benchmark also accepts an optional `mean_confidence` column in the
+CSV and reports the mean score plus Pearson correlation between per-target
+confidence and absolute depth error. Use this diagnostic only with independent
+measured targets and enough varied samples; correlation is not probability
+calibration and can be unstable on small datasets.

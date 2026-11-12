@@ -50,3 +50,21 @@ def test_depth_benchmark_rejects_fractional_pixel_counts():
         evaluate_depth_samples([
             {"known_distance": 10, "measured_distance": 10, "valid_pixels": 1.5, "total_pixels": 10}
         ])
+
+
+def test_depth_benchmark_reports_confidence_error_relationship():
+    result = evaluate_depth_samples([
+        {"known_distance": 10, "measured_distance": 10.1, "valid_pixels": 90, "total_pixels": 100, "mean_confidence": 0.95},
+        {"known_distance": 10, "measured_distance": 11.0, "valid_pixels": 80, "total_pixels": 100, "mean_confidence": 0.50},
+        {"known_distance": 10, "measured_distance": 12.0, "valid_pixels": 70, "total_pixels": 100, "mean_confidence": 0.20},
+    ])
+    assert result["confidence_samples"] == 3
+    assert result["mean_confidence"] == pytest.approx(0.55)
+    assert result["confidence_vs_absolute_error_pearson"] < 0
+
+
+def test_depth_benchmark_rejects_invalid_confidence():
+    with pytest.raises(ValueError, match="mean_confidence"):
+        evaluate_depth_samples([
+            {"known_distance": 10, "measured_distance": 10, "valid_pixels": 50, "total_pixels": 100, "mean_confidence": 1.5}
+        ])

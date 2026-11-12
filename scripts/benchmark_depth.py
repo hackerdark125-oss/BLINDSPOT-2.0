@@ -28,6 +28,7 @@ def read_samples(path: str) -> tuple[list[dict[str, object]], str]:
                 "measured_distance": row["measured_distance"] or None,
                 "valid_pixels": row["valid_pixels"],
                 "total_pixels": row["total_pixels"],
+                "mean_confidence": row.get("mean_confidence") or None,
             })
     if len(units) > 1:
         raise ValueError("all rows must use the same distance unit")
