@@ -85,8 +85,14 @@ def read_ascii_ply(source: str | Path | bytes | bytearray | BinaryIO) -> np.ndar
                 raise ValueError("PLY element count must be non-negative")
             current_properties = []
         elif parts[0] == "property":
-            if current_name is None or len(parts) != 3 or parts[1] == "list":
-                raise ValueError("list-valued or malformed PLY properties are unsupported")
+            if current_name is None:
+                raise ValueError("PLY property declared before an element")
+            if current_name != "vertex":
+                # Face and other trailing elements are not needed to read the
+                # vertex payload; their scalar/list declarations are ignored.
+                continue
+            if len(parts) != 3 or parts[1] == "list":
+                raise ValueError("list-valued or malformed vertex properties are unsupported")
             if parts[1] not in _PLY_TYPES:
                 raise ValueError(f"unsupported PLY scalar type: {parts[1]}")
             current_properties.append((parts[2], _PLY_TYPES[parts[1]]))
