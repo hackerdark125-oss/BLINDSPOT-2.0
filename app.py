@@ -119,6 +119,25 @@ def render_results(name: str, results, live: bool = False) -> pd.DataFrame:
         file_name=f"{Path(name).stem}_blindspot_report.csv",
         mime="text/csv", key=f"download_{name}_{'live' if live else 'video'}",
     )
+    cell_rows = [
+        {
+            "sample_index": sample_index,
+            "time_seconds": analysis.timestamp_seconds,
+            "grid_row": row,
+            "grid_column": column,
+            "predicted_score": float(analysis.confidence_map[row, column]),
+            "reference_score": "",
+        }
+        for sample_index, analysis in enumerate(analyses)
+        for row in range(analysis.confidence_map.shape[0])
+        for column in range(analysis.confidence_map.shape[1])
+    ]
+    st.download_button(
+        "Download per-cell quality labels template (CSV)",
+        pd.DataFrame(cell_rows).to_csv(index=False).encode("utf-8"),
+        file_name=f"{Path(name).stem}_quality_labels_template.csv",
+        mime="text/csv", key=f"quality_labels_{name}_{'live' if live else 'video'}",
+    )
     return summary
 
 
