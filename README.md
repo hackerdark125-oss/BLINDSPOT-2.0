@@ -387,3 +387,19 @@ a sampled fused point cloud and exports a fused PLY plus a JSON summary.
 ASCII and binary little-/big-endian PLY 1.0 are supported. XYZRGB vertex properties may be reordered or include extra scalar fields; list-valued vertex properties and non-vertex elements before vertices are rejected. Extrinsics must already be
 calibrated/verified; this workflow does not estimate camera poses or guarantee
 overlap registration.
+
+
+## Full SE(3) pose-graph optimisation
+
+The optional `blindspot.pose_graph_se3.optimize_pose_graph_se3` API jointly
+optimises camera rotations and translations for short trajectories. Poses are
+camera-to-world transforms; loop-closure measurements map coordinates from
+pose i into pose j. Consecutive odometry edges are derived from the initial
+trajectory, and pose zero is fixed to remove gauge freedom. A damped dense
+Gauss-Newton solver uses central-difference Jacobians and a Huber robust kernel.
+
+This is a short-trajectory research solver, not a production large-scale SLAM
+backend. Loop constraints must be independently verified and expressed in the
+same distance unit as odometry. Incorrect constraints can deform the entire
+trajectory. The existing translation-only API remains available for backward
+compatibility. Synthetic tests establish solver behaviour, not field accuracy.
