@@ -29,7 +29,7 @@ def test_read_ascii_ply_supports_bytes_and_empty_cloud():
 
 @pytest.mark.parametrize("content, message", [
     (b"not ply", "not a PLY"),
-    (b"ply\nformat binary_little_endian 1.1\n", "unsupported PLY format"),
+    (b"ply\nformat binary_little_endian 1.1\nend_header\n", "unsupported PLY format"),
     (b"ply\nformat ascii 1.0\nelement vertex 1\nproperty float x\nend_header\n0\n", "properties"),
     (b"ply\nformat ascii 1.0\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n0 0 0 0 0\n", "incorrect field count"),
     (b"ply\nformat ascii 1.0\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n0 0 nan 0 0 0\n", "finite"),
