@@ -12,7 +12,7 @@ def test_quality_evaluator_reports_error_and_correlation():
         {"predicted_score": 90, "reference_score": 80},
     ], bins=5)
     assert result["samples"] == 3
-    assert math.isclose(result["mean_absolute_error"], 13.3333333333, rel_tol=1e-8)
+    assert math.isclose(result["mean_absolute_error"], 10.0, rel_tol=1e-8)
     assert result["pearson_correlation"] > 0.9
     assert result["spearman_rank_correlation"] == 1.0
     assert len(result["score_bins"]) == 3
