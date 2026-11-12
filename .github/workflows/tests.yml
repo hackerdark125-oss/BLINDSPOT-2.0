@@ -42,9 +42,17 @@ jobs:
               json.dump(poses, stream)
           from blindspot.pose_graph_se3 import optimize_pose_graph_se3
           from blindspot.registration import register_point_cloud_icp
+          from blindspot.camera_rig import estimate_camera_rig_poses
           assert callable(optimize_pose_graph_se3) and callable(register_point_cloud_icp)
+          assert callable(estimate_camera_rig_poses)
           PY
           python scripts/benchmark_trajectory.py --estimated /tmp/estimated_poses.json --ground-truth /tmp/ground_truth_poses.json --output /tmp/trajectory_benchmark.json
+          python scripts/benchmark_depth.py --help > /dev/null
+          python scripts/benchmark_quality.py --help > /dev/null
+          python scripts/benchmark_tracking.py --help > /dev/null
+          python scripts/benchmark_uncertainty.py --help > /dev/null
+          python scripts/fuse_multicamera.py --help > /dev/null
+          python scripts/reconstruct_point_cloud.py --help > /dev/null
           python -c "import json; report=json.load(open('/tmp/trajectory_benchmark.json')); assert report['ate_rmse'] == 0 and report['rpe_translation_rmse'] == 0"
       - name: Smoke-test Streamlit startup
         run: |
