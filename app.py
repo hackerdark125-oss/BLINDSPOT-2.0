@@ -30,6 +30,7 @@ from blindspot.uncertainty import (
     evaluate_calibration, fit_isotonic_calibrator, apply_isotonic_calibrator,
 )
 from blindspot.pose_graph import optimize_pose_graph_translations
+from blindspot.pose_graph_se3 import optimize_pose_graph_se3
 from blindspot.loop_closure import detect_loop_closure_candidates
 from blindspot.multicam import fuse_multicamera_point_clouds
 from blindspot.camera_rig import estimate_camera_rig_poses
@@ -791,10 +792,15 @@ else:
                         "calibration, image synchronization, and scene texture."
                     )
                 else:
-                    m1, m2, m3 = st.columns(3)
+                    mean_confidence = float(np.mean(result.confidence_map[result.valid_mask]))
+                    m1, m2, m3, m4 = st.columns(4)
                     m1.metric("Valid depth pixels", f"{100*valid_count/total_count:.1f}%")
                     m2.metric("Median depth", f"{np.median(valid_depth):.2f} {result.translation_unit}")
                     m3.metric("Depth samples", f"{valid_count:,}")
+                    m4.metric("Mean relative confidence", f"{mean_confidence:.2f}")
+                    st.caption(
+                        "Relative confidence is a texture/consistency heuristic, not a calibrated probability."
+                    )
                     left, right = st.columns(2)
                     with left:
                         st.image(cv2.cvtColor(result.rectified_a, cv2.COLOR_BGR2RGB), caption="Rectified camera A")
@@ -819,10 +825,25 @@ else:
                     )
                     depth_figure.update_layout(height=420)
                     st.plotly_chart(depth_figure, use_container_width=True)
+                    confidence_figure = px.imshow(
+                        result.confidence_map,
+                        zmin=0.0, zmax=1.0,
+                        color_continuous_scale="Viridis",
+                        labels={"x": "Pixel", "y": "Pixel row", "color": "Relative confidence"},
+                        title="Stereo relative confidence map · heuristic",
+                    )
+                    confidence_figure.update_layout(height=420)
+                    st.plotly_chart(confidence_figure, use_container_width=True)
                     st.download_button(
                         "Download depth map (CSV)",
                         pd.DataFrame(result.depth_map).to_csv(index=False).encode("utf-8"),
                         file_name="blindspot_stereo_depth.csv",
+                        mime="text/csv",
+                    )
+                    st.download_button(
+                        "Download relative confidence map (CSV)",
+                        pd.DataFrame(result.confidence_map).to_csv(index=False).encode("utf-8"),
+                        file_name="blindspot_stereo_confidence.csv",
                         mime="text/csv",
                     )
                     cloud_stride = st.select_slider(
@@ -867,8 +888,9 @@ else:
         st.warning(
             "Use fixed, synchronized cameras with the same resolution and calibration. "
             "This is local stereo visual odometry and drift can accumulate. An optional "
-            "manual translation-only correction accepts an independently verified loop-closure "
-            "constraint; candidate retrieval is available, but automatic metric loop-closure verification, pose-constraint generation, and full 6DoF SLAM are not implemented."
+            "optional translation-only and full 6DoF pose-graph correction tools accept independently "
+            "verified relative-pose constraints. Candidate retrieval is available, but automatic metric "
+            "loop-closure verification and pose-constraint generation are not implemented."
         )
         left, right = st.columns(2)
         with left:
@@ -1178,6 +1200,113 @@ else:
                                     )
                                 except Exception as correction_exc:
                                     st.error(f"Loop-closure correction failed: {correction_exc}")
+                    st.divider()
+                    st.subheader("Full 6DoF pose-graph correction")
+                    st.caption(
+                        "Advanced mode: provide an independently measured relative transform from pose i to pose j. "
+                        "Rotation is entered as roll, pitch, yaw in degrees (R = Rz · Ry · Rx)."
+                    )
+                    st.warning(
+                        "This solver jointly adjusts rotation and translation but does not discover or verify loop closures. "
+                        "Only enter a constraint supported by independent measurements."
+                    )
+                    se3_start, se3_end = st.columns(2)
+                    with se3_start:
+                        se3_start_index = st.selectbox(
+                            "6DoF constraint start row", options=list(range(len(trajectory))),
+                            index=0, key="se3_start_index",
+                        )
+                    with se3_end:
+                        se3_end_index = st.selectbox(
+                            "6DoF constraint end row", options=list(range(len(trajectory))),
+                            index=len(trajectory) - 1, key="se3_end_index",
+                        )
+                    rotation_cols = st.columns(3)
+                    with rotation_cols[0]:
+                        roll_degrees = st.number_input("Relative roll (°)", value=0.0, key="se3_roll")
+                    with rotation_cols[1]:
+                        pitch_degrees = st.number_input("Relative pitch (°)", value=0.0, key="se3_pitch")
+                    with rotation_cols[2]:
+                        yaw_degrees = st.number_input("Relative yaw (°)", value=0.0, key="se3_yaw")
+                    translation_cols = st.columns(4)
+                    with translation_cols[0]:
+                        se3_dx = st.number_input("6DoF ΔX", value=0.0, key="se3_dx")
+                    with translation_cols[1]:
+                        se3_dy = st.number_input("6DoF ΔY", value=0.0, key="se3_dy")
+                    with translation_cols[2]:
+                        se3_dz = st.number_input("6DoF ΔZ", value=0.0, key="se3_dz")
+                    with translation_cols[3]:
+                        se3_weight = st.number_input(
+                            "6DoF constraint weight", min_value=0.01, value=100.0,
+                            step=1.0, key="se3_weight",
+                        )
+                    if st.button(
+                        "Apply full 6DoF correction",
+                        key="apply_se3_pose_graph",
+                        disabled=se3_start_index >= se3_end_index,
+                    ):
+                        try:
+                            roll, pitch, yaw = np.radians(
+                                [float(roll_degrees), float(pitch_degrees), float(yaw_degrees)]
+                            )
+                            rx = np.array([
+                                [1, 0, 0], [0, np.cos(roll), -np.sin(roll)],
+                                [0, np.sin(roll), np.cos(roll)],
+                            ], dtype=float)
+                            ry = np.array([
+                                [np.cos(pitch), 0, np.sin(pitch)], [0, 1, 0],
+                                [-np.sin(pitch), 0, np.cos(pitch)],
+                            ], dtype=float)
+                            rz = np.array([
+                                [np.cos(yaw), -np.sin(yaw), 0],
+                                [np.sin(yaw), np.cos(yaw), 0], [0, 0, 1],
+                            ], dtype=float)
+                            measured_relative_rotation = rz @ ry @ rx
+                            se3_result = optimize_pose_graph_se3(
+                                world_poses,
+                                [(
+                                    int(se3_start_index), int(se3_end_index),
+                                    measured_relative_rotation,
+                                    [float(se3_dx), float(se3_dy), float(se3_dz)],
+                                    float(se3_weight),
+                                )],
+                            )
+                            corrected_fused = fuse_point_clouds(
+                                local_clouds, list(se3_result.poses), voxel_size=float(vo_voxel)
+                            )
+                            corrected_trajectory = pd.DataFrame(trajectory).copy()
+                            corrected_array = np.asarray(
+                                [pose[1] for pose in se3_result.poses], dtype=float
+                            )
+                            corrected_trajectory[["x", "y", "z"]] = corrected_array
+                            with tempfile.TemporaryDirectory() as corrected_dir:
+                                corrected_path = write_ply(
+                                    Path(corrected_dir) / "blindspot_se3_corrected_scene.ply",
+                                    corrected_fused,
+                                )
+                                corrected_ply_bytes = corrected_path.read_bytes()
+                            st.success(
+                                f"SE(3) optimisation finished in {se3_result.iterations} iterations. "
+                                f"Robust cost: {se3_result.initial_cost:.5g} → {se3_result.final_cost:.5g}. "
+                                f"Converged: {se3_result.converged}."
+                            )
+                            st.dataframe(corrected_trajectory, use_container_width=True, hide_index=True)
+                            st.download_button(
+                                "Download SE(3)-corrected 3D scene (PLY)",
+                                corrected_ply_bytes,
+                                file_name="blindspot_se3_corrected_scene.ply",
+                                mime="application/octet-stream",
+                                key="download_se3_corrected_scene",
+                            )
+                            st.download_button(
+                                "Download SE(3)-corrected trajectory (CSV)",
+                                corrected_trajectory.to_csv(index=False).encode("utf-8"),
+                                file_name="blindspot_se3_corrected_trajectory.csv",
+                                mime="text/csv",
+                                key="download_se3_corrected_trajectory",
+                            )
+                        except Exception as se3_exc:
+                            st.error(f"Full 6DoF pose-graph correction failed: {se3_exc}")
                     st.caption(
                         f"All translations and 3D coordinates use {stereo.translation_unit}. "
                         "The raw trajectory is locally chained and may drift. Optional correction "
