@@ -66,7 +66,7 @@ def evaluate_tracking(
     tp = fp = fn = id_switches = 0
     iou_sum = 0.0
     previous_identity: dict[int, tuple[int, int]] = {}
-    for frame_index in sorted(set(gt_frames) | set(pred_frames)):
+    for frame_position, frame_index in enumerate(sorted(set(gt_frames) | set(pred_frames))):
         truths, candidates = gt_frames[frame_index], pred_frames[frame_index]
         pairs = sorted(
             ((_iou(truth, candidate), gi, pi)
@@ -88,9 +88,9 @@ def evaluate_tracking(
             gt_id, pred_id = truth["track_id"], candidate["track_id"]
             if gt_id is not None and pred_id is not None:
                 previous = previous_identity.get(gt_id)
-                if previous is not None and previous[0] == frame_index - 1 and previous[1] != pred_id:
+                if previous is not None and previous[0] == frame_position - 1 and previous[1] != pred_id:
                     id_switches += 1
-                previous_identity[gt_id] = (frame_index, pred_id)
+                previous_identity[gt_id] = (frame_position, pred_id)
         fn += len(truths) - len(used_gt)
         fp += len(candidates) - len(used_pred)
 
@@ -116,5 +116,5 @@ def evaluate_tracking(
         "mean_inference_ms": mean_latency,
         "estimated_fps": 1000.0 / mean_latency if mean_latency else None,
         "iou_threshold": iou_threshold,
-        "matching_note": "Greedy class-aware IoU matching; ID switches count changes on consecutive frame indices only.",
+        "matching_note": "Greedy class-aware IoU matching; ID switches count changes on consecutive evaluated frames only.",
     }
