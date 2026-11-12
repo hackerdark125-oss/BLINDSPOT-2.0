@@ -281,3 +281,13 @@ The included evaluator uses greedy class-aware IoU matching and counts ID change
 - [ ] Run `python scripts/benchmark_trajectory.py --estimated estimated_poses.json --ground-truth ground_truth_poses.json --output trajectory_benchmark.json`.
 - [ ] Record ATE, relative translation RMSE, relative rotation RMSE, units, timestamp matching, and ground-truth source.
 - [ ] Ensure ground truth is independently surveyed/measured; no scale fitting is applied by this evaluator.
+
+
+## 6.17 Multi-camera rig calibration graph validation
+
+- [ ] Calibrate each connected camera pair with synchronized chessboard pairs and matching units.
+- [ ] Export the pairwise relative transforms and compose them with the dashboard camera-rig workflow.
+- [ ] Confirm the selected anchor pose is identity and every camera is reachable in the pairwise graph.
+- [ ] Inspect redundant-edge cycle rotation and translation residuals; inconsistent cycles indicate pairwise calibration disagreement.
+- [ ] Export the shared camera-to-world pose JSON and compare it with an independently measured rig layout before fusion.
+- [ ] Do not treat graph connectivity as proof of calibration accuracy or synchronization.
