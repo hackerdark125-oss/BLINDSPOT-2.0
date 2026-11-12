@@ -55,7 +55,14 @@ def analyse_frame(frame: np.ndarray, grid_size: int = 8) -> FrameAnalysis:
     else:
         raise ValueError("frame must be grayscale, BGR, or BGRA")
 
-    gray = cv2.resize(gray, (max(grid_size * 24, 96), max(grid_size * 24, 96)))
+    target_size = max(grid_size * 24, 96)
+    height, width = gray.shape
+    scale = target_size / max(height, width)
+    gray = cv2.resize(
+        gray,
+        (max(1, int(round(width * scale))), max(1, int(round(height * scale)))),
+        interpolation=cv2.INTER_AREA,
+    )
     h, w = gray.shape
     scores, brightnesses, contrasts, sharpnesses, edges_all = [], [], [], [], []
     for row in range(grid_size):
