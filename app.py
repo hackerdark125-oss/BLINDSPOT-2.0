@@ -55,6 +55,8 @@ def render_results(name: str, results, live: bool = False) -> pd.DataFrame:
         "Sharpness": a.metrics.sharpness,
         "Edge density": a.metrics.edge_density,
         "Mean motion": a.mean_motion,
+        "Camera motion compensated": a.camera_motion_compensated,
+        "Scene change detected": a.scene_changed,
         "Maximum activity age (s)": (
             float(a.motion_age_seconds.max()) if a.motion_age_seconds is not None else None
         ),
@@ -68,6 +70,8 @@ def render_results(name: str, results, live: bool = False) -> pd.DataFrame:
     b.metric("Mean uncertainty", f"{summary['Uncertainty'].mean():.1f}/100")
     c.metric("Frames sampled", len(results))
     d.metric("Mean motion", f"{summary['Mean motion'].mean():.2f}")
+    if summary["Scene change detected"].any():
+        st.warning(f"Scene change reset applied to {int(summary['Scene change detected'].sum())} sampled frame(s).")
 
     trend = px.line(summary, x="Time (s)", y=["Confidence", "Uncertainty"],
                     title="Confidence and uncertainty over time", markers=True)
