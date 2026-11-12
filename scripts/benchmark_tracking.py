@@ -1,0 +1,32 @@
+"""Evaluate prediction CSV files against manually labelled ground truth."""
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+from pathlib import Path
+
+from blindspot.evaluation import evaluate_tracking
+
+
+def read_rows(path: str):
+    with Path(path).open("r", newline="", encoding="utf-8-sig") as handle:
+        return list(csv.DictReader(handle))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--ground-truth", required=True, help="CSV with frame_index,track_id,class_id,x,y,width,height")
+    parser.add_argument("--predictions", required=True, help="CSV with the same schema")
+    parser.add_argument("--output", default="benchmark.json", help="Output JSON path")
+    parser.add_argument("--iou", type=float, default=0.5, help="IoU matching threshold (default: 0.5)")
+    args = parser.parse_args()
+    metrics = evaluate_tracking(read_rows(args.ground_truth), read_rows(args.predictions), args.iou)
+    output = Path(args.output)
+    output.write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(metrics, indent=2))
+    print(f"Saved benchmark: {output}")
+
+
+if __name__ == "__main__":
+    main()
