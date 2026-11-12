@@ -117,3 +117,20 @@ def test_stereo_json_rejects_zero_baseline():
     import json
     with pytest.raises(ValueError, match="invalid parameters"):
         load_stereo_calibration_json(json.dumps(data))
+
+def test_stereo_depth_pipeline_returns_expected_arrays():
+    from blindspot.stereo import rectify_and_compute_depth
+
+    rng = np.random.default_rng(22)
+    image_a = rng.integers(0, 256, (120, 160, 3), dtype=np.uint8)
+    image_b = np.roll(image_a, -6, axis=1)
+    result = rectify_and_compute_depth(
+        image_a, image_b, make_intrinsics(), make_intrinsics(), make_stereo(),
+        num_disparities=16, block_size=3,
+    )
+    assert result.rectified_a.shape == image_a.shape
+    assert result.rectified_b.shape == image_b.shape
+    assert result.disparity_pixels.shape == image_a.shape[:2]
+    assert result.depth_map.shape == image_a.shape[:2]
+    assert result.valid_mask.dtype == np.bool_
+    assert result.translation_unit == "cm"
