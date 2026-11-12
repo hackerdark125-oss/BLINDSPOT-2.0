@@ -86,6 +86,49 @@ pip install -r requirements-ai.txt
 
 The first run downloads the selected pretrained weights and requires internet access. The nano model is the recommended starting point for CPU testing; the small model may improve accuracy at higher compute cost. YOLO/ByteTrack results are not guaranteed: evaluate on representative footage, check ID switches and missed detections, and measure FPS on the target hardware. Track IDs can change after occlusion or scene cuts. This is a research prototype, not a safety-critical perception system.
 
+### Batch multi-camera PLY fusion
+
+The dashboard also supports a reproducible command-line workflow for offline
+point-cloud fusion. Each input PLY filename is paired with an explicit camera
+ID, and the pose JSON must contain a camera-to-world rigid transform for every
+input. The transforms must be independently calibrated in one shared world
+frame and use the same distance unit as the point coordinates.
+
+Example:
+
+```bash
+python scripts/fuse_multicamera.py \
+  --cloud left=exports/left.ply \
+  --cloud right=exports/right.ply \
+  --poses camera_poses.json \
+  --voxel-size 0.02 \
+  --output exports/fused_scene.ply \
+  --summary exports/fusion_summary.json
+```
+
+The pose JSON format is the same as the dashboard example:
+
+```json
+{
+  "distance_unit": "meters",
+  "cameras": {
+    "left": {
+      "rotation_matrix": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+      "translation_vector": [0, 0, 0]
+    },
+    "right": {
+      "rotation_matrix": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+      "translation_vector": [0.25, 0, 0]
+    }
+  }
+}
+```
+
+Use real calibrated transforms rather than the identity example. The command
+validates camera IDs and rigid transforms, reads ASCII or binary XYZRGB PLY
+files, and writes a fused ASCII PLY plus an optional JSON summary. It does not
+estimate extrinsics or automatically align overlapping clouds.
+
 ## Deployment
 See [DEPLOYMENT.md](DEPLOYMENT.md) for Docker and Streamlit Community Cloud instructions. The repository includes a Dockerfile and a dark Streamlit theme.
 
