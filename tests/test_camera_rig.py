@@ -39,3 +39,36 @@ def test_camera_rig_rejects_disconnected_graph_and_bad_edges():
         estimate_camera_rig_poses(
             ["a", "b"], [("a", "b", np.zeros((3, 3)), [1, 0, 0])], "a"
         )
+
+
+def test_camera_rig_composes_non_identity_camera_rotations():
+    angle_b = np.deg2rad(12.0)
+    angle_c = np.deg2rad(-7.0)
+    rotation_b = np.array([
+        [np.cos(angle_b), -np.sin(angle_b), 0],
+        [np.sin(angle_b), np.cos(angle_b), 0],
+        [0, 0, 1.0],
+    ])
+    rotation_c = np.array([
+        [np.cos(angle_c), -np.sin(angle_c), 0],
+        [np.sin(angle_c), np.cos(angle_c), 0],
+        [0, 0, 1.0],
+    ])
+    poses = {
+        "a": (np.eye(3), np.array([0.0, 0.0, 0.0])),
+        "b": (rotation_b, np.array([0.4, -0.1, 0.0])),
+        "c": (rotation_c, np.array([0.7, 0.2, 0.05])),
+    }
+    ab = _edge_from_world_poses(poses["a"], poses["b"])
+    bc = _edge_from_world_poses(poses["b"], poses["c"])
+    ac = _edge_from_world_poses(poses["a"], poses["c"])
+    result = estimate_camera_rig_poses(
+        ["a", "b", "c"],
+        [("a", "b", *ab), ("b", "c", *bc), ("a", "c", *ac)],
+        "a",
+    )
+    for camera_id in poses:
+        actual_rotation, actual_translation = result.camera_poses[camera_id]
+        assert np.allclose(actual_rotation, poses[camera_id][0], atol=1e-8)
+        assert np.allclose(actual_translation, poses[camera_id][1], atol=1e-8)
+    assert result.mean_rotation_cycle_error_degrees == pytest.approx(0.0, abs=1e-6)
