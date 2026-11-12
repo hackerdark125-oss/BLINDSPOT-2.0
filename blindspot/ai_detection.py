@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Sequence
 
 import cv2
@@ -29,6 +30,7 @@ class ObjectDetection:
 class ObjectTrackingFrame:
     frame_index: int
     timestamp_seconds: float
+    inference_time_ms: float
     annotated_frame: np.ndarray
     detections: tuple[ObjectDetection, ...]
 
@@ -159,9 +161,11 @@ def process_video(
             if not ok:
                 break
             if frame_index % sample_every_frames == 0:
+                inference_started = perf_counter()
                 detections = detector.track_frame(
                     frame, classes=classes, confidence=confidence, image_size=image_size
                 )
+                inference_time_ms = (perf_counter() - inference_started) * 1000.0
                 annotated = frame.copy()
                 for item in detections:
                     x1, y1 = item.x, item.y
@@ -176,6 +180,7 @@ def process_video(
                 output.append(ObjectTrackingFrame(
                     frame_index=frame_index,
                     timestamp_seconds=frame_index / fps,
+                    inference_time_ms=inference_time_ms,
                     annotated_frame=annotated,
                     detections=tuple(detections),
                 ))
