@@ -15,6 +15,8 @@ BlindSpot 2.0 is an experimental computer-vision research prototype that highlig
 - Dense optical-flow motion maps using Farneback
 - Per-grid-cell time-since-motion activity maps
 - Repeated-frame diagnostic for potentially frozen feeds
+- Chessboard-based camera intrinsic and lens-distortion calibration
+- Calibration JSON export and undistortion preview
 - Weak-region prioritisation, multi-camera comparison, and CSV exports
 - Unit tests and GitHub Actions CI
 
@@ -35,6 +37,14 @@ Open the local URL printed by Streamlit, usually http://localhost:8501.
 4. Select a capture duration and click **Start live analysis**.
 
 Live capture runs on the machine hosting the Streamlit process. A remotely hosted dashboard cannot automatically access a camera attached to your personal computer. Network stream URLs should be kept private and must not be committed to Git.
+
+## Camera calibration
+1. Select **Camera calibration** in the dashboard.
+2. Upload at least three photos of the same chessboard from varied positions and angles (more varied views are better).
+3. Enter the number of inner corner intersections and the real-world square size.
+4. Run calibration, review the reprojection RMS, and download the JSON parameters.
+
+All images must have the same resolution. A lower reprojection error is generally preferable, but it is not by itself proof of good calibration. The current release estimates single-camera intrinsics; it does not yet calculate camera-to-camera extrinsics or 3D coverage.
 
 ## Understanding motion activity age
 The motion tracker computes dense optical flow between sampled frames with OpenCV's Farneback algorithm. Each grid cell stores its average flow magnitude and elapsed time since motion last exceeded a configurable threshold.
@@ -58,9 +68,10 @@ Each sampled frame is divided into a configurable grid. Every cell receives a he
 - [x] Live webcam / network-stream capture
 - [x] Repeated-frame / possible-freeze diagnostics
 - [x] Dense optical-flow maps and per-cell motion activity age
+- [x] Chessboard-based single-camera intrinsic calibration and undistortion preview
 - [x] Input validation, unit tests, and CI
 - [ ] Scene-change-aware activity baselines and robust camera-motion compensation
-- [ ] Camera calibration and time synchronisation
+- [ ] Multi-camera extrinsic calibration and time synchronisation
 - [ ] Geometric multi-camera coverage estimation using camera pose / visual localisation
 - [ ] Validated uncertainty model and benchmark dataset
 
