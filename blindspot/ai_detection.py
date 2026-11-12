@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
+import time
 from typing import Any, Sequence
 
 import cv2
@@ -238,6 +239,7 @@ def process_stream(
     confidence: float = 0.25,
     image_size: int = 640,
     detector: YOLODetector | None = None,
+    read_timeout_seconds: float = 5.0,
 ) -> list[ObjectTrackingFrame]:
     """Run YOLO + ByteTrack on a bounded local webcam or network stream.
 
@@ -254,6 +256,8 @@ def process_stream(
         raise ValueError("confidence must be between 0 and 1")
     if isinstance(image_size, bool) or not isinstance(image_size, int) or image_size < 32:
         raise ValueError("image_size must be an integer of at least 32")
+    if isinstance(read_timeout_seconds, bool) or not np.isfinite(read_timeout_seconds) or read_timeout_seconds <= 0:
+        raise ValueError("read_timeout_seconds must be a positive finite number")
 
     if isinstance(source, bool):
         raise ValueError("source must be a camera index or stream URL")
@@ -283,15 +287,18 @@ def process_stream(
 
     output: list[ObjectTrackingFrame] = []
     started = perf_counter()
+    last_frame_received = started
     frame_index = 0
     try:
         while perf_counter() - started < duration_seconds and len(output) < max_samples:
             ok, frame = capture.read()
             if not ok:
-                # Some network cameras briefly drop a frame; avoid a busy loop.
-                import time
+                # Tolerate short network hiccups but do not wait forever on a dead stream.
+                if perf_counter() - last_frame_received >= read_timeout_seconds:
+                    break
                 time.sleep(0.02)
                 continue
+            last_frame_received = perf_counter()
             if frame_index % sample_every_frames == 0:
                 timestamp = perf_counter() - started
                 inference_started = perf_counter()
