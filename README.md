@@ -254,3 +254,40 @@ their correctness, estimate absolute position, or provide full SE(3) SLAM.
 Incorrect constraints can make the trajectory worse. It is intended for short
 trajectories and should be evaluated against measured reference paths before
 being used in any operational setting.
+
+
+## Multi-camera 3D point-cloud fusion
+
+The `blindspot.multicam.fuse_multicamera_point_clouds` API registers named
+camera-local XYZRGB clouds using supplied camera-to-world poses, then combines
+them in one shared world frame. The pose for each camera is a rotation matrix
+and translation vector; all translations and point coordinates must use the
+same distance unit. Rotation matrices are checked for orthonormality and a
+positive unit determinant. Optional voxel fusion averages XYZ and RGB values
+using original point counts, with per-camera voxel aggregation to reduce peak
+memory compared with stacking every raw point at once.
+
+Example:
+
+```python
+from blindspot.multicam import fuse_multicamera_point_clouds
+
+result = fuse_multicamera_point_clouds(
+    {"north": north_cloud, "south": south_cloud},
+    {
+        "north": (north_rotation, north_translation),
+        "south": (south_rotation, south_translation),
+    },
+    voxel_size=0.02,
+)
+fused_cloud = result.points
+print(result.input_points, result.output_points)
+```
+
+This is a fusion stage, not an extrinsic-calibration or registration solver.
+The camera poses must already refer to the same verified world coordinate
+frame. It does not synchronise cameras, compensate rolling shutter, remove
+occlusions, or estimate missing poses. Incorrect extrinsics can create doubled
+or smeared geometry. The synthetic performance utility is
+`python scripts/benchmark_fusion.py --cameras 2 --points-per-camera 100000`;
+its results are hardware-dependent and are not real-scene accuracy evidence.

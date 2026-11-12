@@ -198,3 +198,14 @@ The included evaluator uses greedy class-aware IoU matching and counts ID change
 - [ ] Evaluate only with independently verified revisit constraints; compare raw and corrected trajectory error against measured reference positions.
 - [ ] Test multiple loop closures, long trajectories, and outlier constraints before considering a robust loss or full SE(3) optimiser.
 - [ ] Confirm rotations are unchanged and document the translation-only limitation.
+
+
+## 6.11 Multi-camera 3D fusion software validation
+
+- [ ] Supply one point cloud and verified camera-to-world pose per camera, all in one coordinate frame and distance unit.
+- [ ] Confirm camera IDs match exactly and malformed/non-rigid rotations are rejected.
+- [ ] Compare a known synthetic two-camera transform with expected world coordinates.
+- [ ] Compare voxel-averaged XYZRGB values against a hand-calculated result.
+- [ ] Run `python scripts/benchmark_fusion.py --cameras 2 --points-per-camera 100000 --output fusion_benchmark.json` and record hardware, runtime, input/output point counts, and voxel size.
+- [ ] Repeat with actual calibrated cameras and measured reference geometry; inspect overlap seams and duplicate surfaces.
+- [ ] Do not interpret a successful fusion operation as proof that camera extrinsics or synchronization are accurate.
