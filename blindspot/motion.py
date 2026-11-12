@@ -79,7 +79,13 @@ class MotionFreshnessTracker:
         else:
             raise ValueError("frame must be grayscale, BGR, or BGRA")
         size = max(self.grid_size * 24, 96)
-        return cv2.resize(gray, (size, size), interpolation=cv2.INTER_AREA)
+        height, width = gray.shape
+        scale = size / max(height, width)
+        resized_width = max(1, int(round(width * scale)))
+        resized_height = max(1, int(round(height * scale)))
+        return cv2.resize(
+            gray, (resized_width, resized_height), interpolation=cv2.INTER_AREA
+        )
 
     def _is_scene_change(self, previous: np.ndarray, current: np.ndarray) -> bool:
         previous_hist = cv2.calcHist([previous], [0], None, [32], [0, 256])
