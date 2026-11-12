@@ -49,3 +49,36 @@ def test_visual_motion_rejects_blank_frames():
     blank = np.zeros((80, 80), dtype=np.uint8)
     with pytest.raises(ValueError, match="insufficient visual features"):
         estimate_visual_motion(blank, blank, np.eye(3))
+
+
+from blindspot.reconstruction import (
+    compose_camera_to_world_pose, fuse_point_clouds, estimate_stereo_visual_motion,
+)
+
+
+def test_compose_camera_pose_identity_relative_motion():
+    rotation, translation = compose_camera_to_world_pose(
+        np.eye(3), [0, 0, 0], np.eye(3), [1, 0, 0]
+    )
+    assert np.allclose(rotation, np.eye(3))
+    assert np.allclose(translation, [-1, 0, 0])
+
+
+def test_fuse_point_clouds_transforms_and_voxel_averages():
+    cloud_a = np.array([[0, 0, 1, 10, 20, 30]], dtype=float)
+    cloud_b = np.array([[0.01, 0, 1, 30, 40, 50]], dtype=float)
+    poses = [(np.eye(3), np.zeros(3)), (np.eye(3), np.zeros(3))]
+    fused = fuse_point_clouds([cloud_a, cloud_b], poses, voxel_size=0.1)
+    assert fused.shape == (1, 6)
+    assert np.allclose(fused[0], [0.005, 0, 1, 20, 30, 40])
+
+
+def test_fuse_point_clouds_rejects_mismatched_pose_count():
+    with pytest.raises(ValueError, match="same non-zero"):
+        fuse_point_clouds([np.zeros((1, 6))], [])
+
+
+def test_stereo_visual_odometry_rejects_depth_shape_mismatch():
+    frame = np.zeros((20, 20), dtype=np.uint8)
+    with pytest.raises(ValueError, match="match the previous frame"):
+        estimate_stereo_visual_motion(frame, frame, np.ones((10, 10)), np.eye(3))

@@ -155,3 +155,152 @@ def estimate_visual_motion(
         match_count=len(good),
         inlier_ratio=float(inliers / len(good)),
     )
+
+
+@dataclass(frozen=True)
+class StereoVisualMotion:
+    """Metric relative pose from previous camera coordinates to current coordinates."""
+    rotation_matrix: list[list[float]]
+    translation_vector: list[float]
+    inlier_count: int
+    match_count: int
+    inlier_ratio: float
+    metric_scale_known: bool = True
+
+
+def estimate_stereo_visual_motion(
+    previous_frame: np.ndarray,
+    current_frame: np.ndarray,
+    previous_depth: np.ndarray,
+    camera_matrix: np.ndarray | list[list[float]],
+    min_inliers: int = 8,
+    max_features: int = 3000,
+    reprojection_error: float = 2.0,
+) -> StereoVisualMotion:
+    """Estimate metric frame-to-frame motion using previous-frame stereo depth.
+
+    ORB matches are converted to 3D points with the previous frame's depth,
+    then PnP-RANSAC estimates the transform mapping previous-camera 3D points
+    into current-camera coordinates. Depth and translation use the same unit.
+    """
+    for name, frame in (("previous_frame", previous_frame), ("current_frame", current_frame)):
+        if not isinstance(frame, np.ndarray) or frame.size == 0 or frame.dtype != np.uint8:
+            raise ValueError(f"{name} must be a non-empty uint8 image")
+        if frame.ndim not in (2, 3) or (frame.ndim == 3 and frame.shape[2] not in (3, 4)):
+            raise ValueError(f"{name} must be grayscale, BGR, or BGRA")
+    if previous_frame.shape[:2] != current_frame.shape[:2]:
+        raise ValueError("both frames must have the same dimensions")
+    depth = np.asarray(previous_depth, dtype=np.float64)
+    if depth.shape != previous_frame.shape[:2]:
+        raise ValueError("previous_depth must match the previous frame dimensions")
+    matrix = np.asarray(camera_matrix, dtype=np.float64)
+    if matrix.shape != (3, 3) or not np.isfinite(matrix).all() or matrix[0, 0] <= 0 or matrix[1, 1] <= 0:
+        raise ValueError("camera_matrix must be finite 3x3 with positive focal lengths")
+    if isinstance(min_inliers, bool) or not isinstance(min_inliers, int) or min_inliers < 6:
+        raise ValueError("min_inliers must be an integer >= 6")
+    if isinstance(max_features, bool) or not isinstance(max_features, int) or max_features < min_inliers:
+        raise ValueError("max_features must be an integer >= min_inliers")
+    if not np.isfinite(reprojection_error) or reprojection_error <= 0:
+        raise ValueError("reprojection_error must be positive and finite")
+
+    def grayscale(frame: np.ndarray) -> np.ndarray:
+        if frame.ndim == 2:
+            return frame
+        return cv2.cvtColor(frame[:, :, :3], cv2.COLOR_BGR2GRAY)
+
+    detector = cv2.ORB_create(nfeatures=max_features)
+    key_a, desc_a = detector.detectAndCompute(grayscale(previous_frame), None)
+    key_b, desc_b = detector.detectAndCompute(grayscale(current_frame), None)
+    if desc_a is None or desc_b is None:
+        raise ValueError("insufficient visual features for stereo visual odometry")
+    pairs = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(desc_a, desc_b, k=2)
+    good = [m for pair in pairs if len(pair) == 2 for m, n in [pair] if m.distance < 0.75 * n.distance]
+    if len(good) < min_inliers:
+        raise ValueError("insufficient reliable feature matches for stereo visual odometry")
+
+    object_points, image_points = [], []
+    height, width = depth.shape
+    fx, fy, cx, cy = matrix[0, 0], matrix[1, 1], matrix[0, 2], matrix[1, 2]
+    for match in good:
+        u, v = key_a[match.queryIdx].pt
+        x, y = int(round(u)), int(round(v))
+        if not (0 <= x < width and 0 <= y < height):
+            continue
+        z = depth[y, x]
+        if not np.isfinite(z) or z <= 0:
+            continue
+        object_points.append([(u - cx) * z / fx, (v - cy) * z / fy, z])
+        image_points.append(key_b[match.trainIdx].pt)
+    if len(object_points) < min_inliers:
+        raise ValueError("too few matched features have valid stereo depth")
+    object_array = np.asarray(object_points, dtype=np.float32)
+    image_array = np.asarray(image_points, dtype=np.float32)
+    success, rvec, tvec, inliers = cv2.solvePnPRansac(
+        object_array, image_array, matrix, None,
+        iterationsCount=200, reprojectionError=float(reprojection_error),
+        confidence=0.999, flags=cv2.SOLVEPNP_ITERATIVE,
+    )
+    inlier_count = 0 if inliers is None else len(inliers)
+    if not success or inlier_count < min_inliers:
+        raise ValueError(f"stereo PnP failed or produced too few inliers ({inlier_count})")
+    rotation, _ = cv2.Rodrigues(rvec)
+    return StereoVisualMotion(
+        rotation_matrix=rotation.tolist(),
+        translation_vector=tvec.reshape(3).tolist(),
+        inlier_count=int(inlier_count),
+        match_count=len(object_points),
+        inlier_ratio=float(inlier_count / len(object_points)),
+    )
+
+
+def compose_camera_to_world_pose(
+    previous_rotation: np.ndarray | list[list[float]],
+    previous_translation: np.ndarray | list[float],
+    relative_rotation: np.ndarray | list[list[float]],
+    relative_translation: np.ndarray | list[float],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compose camera-to-world pose with a previous-to-current relative transform."""
+    r_world_previous = np.asarray(previous_rotation, dtype=np.float64)
+    t_world_previous = np.asarray(previous_translation, dtype=np.float64)
+    r_current_previous = np.asarray(relative_rotation, dtype=np.float64)
+    t_current_previous = np.asarray(relative_translation, dtype=np.float64)
+    if (r_world_previous.shape != (3, 3) or r_current_previous.shape != (3, 3)
+            or t_world_previous.shape != (3,) or t_current_previous.shape != (3,)
+            or not all(np.isfinite(x).all() for x in
+                       (r_world_previous, r_current_previous, t_world_previous, t_current_previous))):
+        raise ValueError("poses must contain finite 3x3 rotations and 3D translations")
+    r_world_current = r_world_previous @ r_current_previous.T
+    t_world_current = t_world_previous - r_world_current @ t_current_previous
+    return r_world_current, t_world_current
+
+
+def fuse_point_clouds(
+    point_clouds: list[np.ndarray],
+    camera_to_world_poses: list[tuple[np.ndarray | list, np.ndarray | list]],
+    voxel_size: float | None = None,
+) -> np.ndarray:
+    """Transform camera-local XYZRGB clouds into one world frame and optionally voxel-average."""
+    if len(point_clouds) != len(camera_to_world_poses) or not point_clouds:
+        raise ValueError("provide the same non-zero number of point clouds and poses")
+    transformed = []
+    for cloud, pose in zip(point_clouds, camera_to_world_poses):
+        points = np.asarray(cloud, dtype=np.float64)
+        if points.ndim != 2 or points.shape[1] != 6 or not np.isfinite(points).all():
+            raise ValueError("each point cloud must be a finite Nx6 XYZRGB array")
+        rotation = np.asarray(pose[0], dtype=np.float64)
+        translation = np.asarray(pose[1], dtype=np.float64)
+        if rotation.shape != (3, 3) or translation.shape != (3,) or not np.isfinite(rotation).all() or not np.isfinite(translation).all():
+            raise ValueError("each pose must contain a finite 3x3 rotation and 3D translation")
+        xyz_world = (rotation @ points[:, :3].T).T + translation
+        transformed.append(np.column_stack((xyz_world, points[:, 3:6])))
+    merged = np.vstack(transformed)
+    if voxel_size is None:
+        return merged.astype(np.float32)
+    if not np.isfinite(voxel_size) or voxel_size <= 0:
+        raise ValueError("voxel_size must be positive and finite")
+    keys = np.floor(merged[:, :3] / float(voxel_size)).astype(np.int64)
+    _, inverse = np.unique(keys, axis=0, return_inverse=True)
+    sums = np.zeros((int(inverse.max()) + 1, 6), dtype=np.float64)
+    counts = np.bincount(inverse)
+    np.add.at(sums, inverse, merged)
+    return (sums / counts[:, None]).astype(np.float32)
