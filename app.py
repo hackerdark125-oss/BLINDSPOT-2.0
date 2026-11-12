@@ -11,7 +11,8 @@ import streamlit as st
 
 from blindspot.engine import sample_video, prioritise_cells
 from blindspot.live import capture_live_source
-from blindspot.calibration import calibrate_camera, undistort_frame
+from blindspot.calibration import calibrate_camera, load_calibration_json, undistort_frame
+from blindspot.stereo import calibrate_stereo_cameras
 
 st.set_page_config(page_title="BlindSpot 2.0", page_icon="◉", layout="wide")
 st.title("◉ BLINDSPOT 2.0")
@@ -181,79 +182,164 @@ elif mode == "Live webcam / RTSP":
             st.error(f"Live capture failed: {exc}")
 
 
+
 else:
     st.subheader("Camera calibration")
-    st.write(
-        "Upload multiple photos of the same printed chessboard taken from different "
-        "positions and angles. Calibration estimates camera intrinsics and lens distortion."
+    calibration_mode = st.radio(
+        "Calibration workflow",
+        ["Single-camera intrinsics", "Two-camera stereo extrinsics"],
+        horizontal=True,
     )
-    st.warning(
-        "Use the number of INNER chessboard corners, not the number of squares. "
-        "All calibration images must have the same resolution."
-    )
-    calibration_files = st.file_uploader(
-        "Chessboard calibration photos", type=["jpg", "jpeg", "png", "bmp"],
-        accept_multiple_files=True, key="calibration_photos",
-    )
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        board_columns = st.number_input("Inner corners · columns", min_value=2, max_value=20, value=9)
-    with c2:
-        board_rows = st.number_input("Inner corners · rows", min_value=2, max_value=20, value=6)
-    with c3:
-        square_size = st.number_input("Square size (consistent units)", min_value=0.001, value=1.0, step=0.1)
-    if st.button("Calibrate camera", type="primary", disabled=not calibration_files):
-        decoded = []
-        for uploaded in calibration_files:
-            raw = np.frombuffer(uploaded.getvalue(), dtype=np.uint8)
-            image = cv2.imdecode(raw, cv2.IMREAD_COLOR)
-            if image is not None:
-                decoded.append(image)
-        try:
-            with st.spinner("Detecting chessboard corners and estimating camera parameters..."):
-                calibration = calibrate_camera(
-                    decoded,
-                    board_size=(int(board_columns), int(board_rows)),
-                    square_size=float(square_size),
+    if calibration_mode == "Single-camera intrinsics":
+        st.write(
+            "Upload multiple photos of the same printed chessboard taken from different "
+            "positions and angles. Calibration estimates camera intrinsics and lens distortion."
+        )
+        st.warning(
+            "Use the number of INNER chessboard corners, not the number of squares. "
+            "All calibration images must have the same resolution."
+        )
+        calibration_files = st.file_uploader(
+            "Chessboard calibration photos", type=["jpg", "jpeg", "png", "bmp"],
+            accept_multiple_files=True, key="calibration_photos",
+        )
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            board_columns = st.number_input("Inner corners · columns", min_value=2, max_value=20, value=9)
+        with c2:
+            board_rows = st.number_input("Inner corners · rows", min_value=2, max_value=20, value=6)
+        with c3:
+            square_size = st.number_input("Square size (consistent units)", min_value=0.001, value=1.0, step=0.1)
+        if st.button("Calibrate camera", type="primary", disabled=not calibration_files):
+            decoded = []
+            for uploaded in calibration_files:
+                raw = np.frombuffer(uploaded.getvalue(), dtype=np.uint8)
+                image = cv2.imdecode(raw, cv2.IMREAD_COLOR)
+                if image is not None:
+                    decoded.append(image)
+            try:
+                with st.spinner("Detecting chessboard corners and estimating camera parameters..."):
+                    calibration = calibrate_camera(
+                        decoded,
+                        board_size=(int(board_columns), int(board_rows)),
+                        square_size=float(square_size),
+                    )
+                st.success(
+                    f"Calibration complete · {calibration.accepted_views} usable views · "
+                    f"{calibration.rejected_views} rejected"
                 )
-            st.success(
-                f"Calibration complete · {calibration.accepted_views} usable views · "
-                f"{calibration.rejected_views} rejected"
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Reprojection RMS", f"{calibration.rms_reprojection_error:.4f}")
+                m2.metric("Image width", calibration.image_width)
+                m3.metric("Image height", calibration.image_height)
+                st.json({
+                    "camera_matrix": calibration.camera_matrix,
+                    "distortion_coefficients": calibration.distortion_coefficients,
+                })
+                st.download_button(
+                    "Download calibration JSON",
+                    calibration.to_json().encode("utf-8"),
+                    file_name="blindspot_camera_calibration.json",
+                    mime="application/json",
+                )
+                preview_file = st.selectbox(
+                    "Choose an uploaded photo to preview undistortion",
+                    options=list(range(len(calibration_files))),
+                    format_func=lambda index: calibration_files[index].name,
+                )
+                raw = np.frombuffer(calibration_files[preview_file].getvalue(), dtype=np.uint8)
+                original = cv2.imdecode(raw, cv2.IMREAD_COLOR)
+                if original is not None and (original.shape[1], original.shape[0]) == (
+                    calibration.image_width, calibration.image_height
+                ):
+                    corrected = undistort_frame(original, calibration)
+                    left, right = st.columns(2)
+                    with left:
+                        st.image(cv2.cvtColor(original, cv2.COLOR_BGR2RGB), caption="Original")
+                    with right:
+                        st.image(cv2.cvtColor(corrected, cv2.COLOR_BGR2RGB), caption="Undistorted")
+                else:
+                    st.info("The selected preview must match the calibration image resolution.")
+            except Exception as exc:
+                st.error(f"Calibration failed: {exc}")
+    else:
+        st.write(
+            "Upload synchronized chessboard image pairs from two fixed cameras. "
+            "Each A image and B image at the same index must show the same board pose."
+        )
+        st.warning(
+            "First calibrate each camera separately and upload its JSON. Both cameras "
+            "must use the same resolution, board geometry, and square-size unit."
+        )
+        left, right = st.columns(2)
+        with left:
+            intrinsics_a_file = st.file_uploader(
+                "Camera A intrinsics JSON", type=["json"], key="intrinsics_a"
             )
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Reprojection RMS", f"{calibration.rms_reprojection_error:.4f}")
-            m2.metric("Image width", calibration.image_width)
-            m3.metric("Image height", calibration.image_height)
-            st.json({
-                "camera_matrix": calibration.camera_matrix,
-                "distortion_coefficients": calibration.distortion_coefficients,
-            })
-            st.download_button(
-                "Download calibration JSON",
-                calibration.to_json().encode("utf-8"),
-                file_name="blindspot_camera_calibration.json",
-                mime="application/json",
+            images_a_files = st.file_uploader(
+                "Camera A synchronized chessboard photos", type=["jpg", "jpeg", "png", "bmp"],
+                accept_multiple_files=True, key="stereo_images_a",
             )
-            preview_file = st.selectbox(
-                "Choose an uploaded photo to preview undistortion",
-                options=list(range(len(calibration_files))),
-                format_func=lambda index: calibration_files[index].name,
+        with right:
+            intrinsics_b_file = st.file_uploader(
+                "Camera B intrinsics JSON", type=["json"], key="intrinsics_b"
             )
-            raw = np.frombuffer(calibration_files[preview_file].getvalue(), dtype=np.uint8)
-            original = cv2.imdecode(raw, cv2.IMREAD_COLOR)
-            if original is not None and (original.shape[1], original.shape[0]) == (
-                calibration.image_width, calibration.image_height
-            ):
-                corrected = undistort_frame(original, calibration)
-                left, right = st.columns(2)
-                with left:
-                    st.image(cv2.cvtColor(original, cv2.COLOR_BGR2RGB), caption="Original")
-                with right:
-                    st.image(cv2.cvtColor(corrected, cv2.COLOR_BGR2RGB), caption="Undistorted")
+            images_b_files = st.file_uploader(
+                "Camera B synchronized chessboard photos", type=["jpg", "jpeg", "png", "bmp"],
+                accept_multiple_files=True, key="stereo_images_b",
+            )
+        stereo_columns, stereo_rows, stereo_square = st.columns(3)
+        with stereo_columns:
+            stereo_board_columns = st.number_input("Stereo inner corners · columns", min_value=2, max_value=20, value=9)
+        with stereo_rows:
+            stereo_board_rows = st.number_input("Stereo inner corners · rows", min_value=2, max_value=20, value=6)
+        with stereo_square:
+            stereo_square_size = st.number_input("Stereo square size", min_value=0.001, value=1.0, step=0.1)
+        translation_unit = st.text_input("Translation unit", value="same as square size")
+        ready = bool(intrinsics_a_file and intrinsics_b_file and images_a_files and images_b_files)
+        if st.button("Calibrate camera pair", type="primary", disabled=not ready):
+            if len(images_a_files) != len(images_b_files):
+                st.error("Upload the same number of synchronized images for both cameras.")
             else:
-                st.info("The selected preview must match the calibration image resolution.")
-        except Exception as exc:
-            st.error(f"Calibration failed: {exc}")
+                try:
+                    calibration_a = load_calibration_json(intrinsics_a_file.getvalue().decode("utf-8"))
+                    calibration_b = load_calibration_json(intrinsics_b_file.getvalue().decode("utf-8"))
+                    def decode_images(files):
+                        decoded = []
+                        for uploaded in files:
+                            raw = np.frombuffer(uploaded.getvalue(), dtype=np.uint8)
+                            decoded.append(cv2.imdecode(raw, cv2.IMREAD_COLOR))
+                        return decoded
+                    decoded_a = decode_images(images_a_files)
+                    decoded_b = decode_images(images_b_files)
+                    with st.spinner("Estimating relative camera pose from paired chessboards..."):
+                        stereo = calibrate_stereo_cameras(
+                            decoded_a, decoded_b, calibration_a, calibration_b,
+                            board_size=(int(stereo_board_columns), int(stereo_board_rows)),
+                            square_size=float(stereo_square_size),
+                            translation_unit=translation_unit,
+                        )
+                    st.success(
+                        f"Stereo calibration complete · {stereo.accepted_pairs} usable pairs · "
+                        f"{stereo.rejected_pairs} rejected"
+                    )
+                    x, y = st.columns(2)
+                    x.metric("Stereo reprojection RMS", f"{stereo.rms_reprojection_error:.4f}")
+                    y.metric("Translation unit", stereo.translation_unit)
+                    st.json({
+                        "rotation_matrix": stereo.rotation_matrix,
+                        "translation_vector": stereo.translation_vector,
+                        "essential_matrix": stereo.essential_matrix,
+                        "fundamental_matrix": stereo.fundamental_matrix,
+                    })
+                    st.download_button(
+                        "Download stereo extrinsics JSON",
+                        stereo.to_json().encode("utf-8"),
+                        file_name="blindspot_stereo_extrinsics.json",
+                        mime="application/json",
+                    )
+                except Exception as exc:
+                    st.error(f"Stereo calibration failed: {exc}")
 
 
 st.divider()
