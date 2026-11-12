@@ -307,3 +307,32 @@ detection. Only use a displacement supported by a verified revisit or external
 measurement. The optimiser currently adjusts translations only; rotations are
 unchanged. Incorrect loop closures can worsen the trajectory, so preserve and
 compare raw and corrected exports against measured reference positions.
+
+
+## Dashboard multi-camera 3D fusion
+
+Open **Camera calibration → Multi-camera PLY fusion**. Upload one ASCII XYZRGB
+PLY per camera (the filename stem is the camera ID) and a shared pose JSON:
+
+```json
+{
+  "distance_unit": "meters",
+  "cameras": {
+    "camera_1": {
+      "rotation_matrix": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+      "translation_vector": [0, 0, 0]
+    },
+    "camera_2": {
+      "rotation_matrix": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+      "translation_vector": [0.25, 0, 0]
+    }
+  }
+}
+```
+
+The pose for each camera maps camera-local coordinates into the common world
+frame. Camera IDs must match PLY filename stems exactly. The dashboard previews
+a sampled fused point cloud and exports a fused PLY plus a JSON summary.
+Only ASCII PLY 1.0 with XYZRGB vertices is accepted. Extrinsics must already be
+calibrated/verified; this workflow does not estimate camera poses or guarantee
+overlap registration.
