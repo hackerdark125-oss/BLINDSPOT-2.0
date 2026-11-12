@@ -110,3 +110,50 @@ def test_reset_tracker_clears_each_persistent_tracker():
 
 def test_reset_tracker_is_safe_before_predictor_initialization():
     YOLODetector(model=FakeModel()).reset_tracker()
+
+
+def test_process_stream_samples_live_frames_and_releases_capture(monkeypatch):
+    from blindspot.ai_detection import process_stream
+
+    class FakeCapture:
+        def __init__(self):
+            self.index = 0
+            self.released = False
+
+        def isOpened(self):
+            return True
+
+        def read(self):
+            frame = np.full((120, 100, 3), self.index, dtype=np.uint8)
+            self.index += 1
+            return True, frame
+
+        def release(self):
+            self.released = True
+
+    capture = FakeCapture()
+    monkeypatch.setattr("blindspot.ai_detection.cv2.VideoCapture", lambda source: capture)
+    model = FakeModel()
+    results = process_stream(
+        "0", duration_seconds=60, sample_every_frames=2, max_samples=3,
+        classes=[0, 2], detector=YOLODetector(model=model),
+    )
+    assert [result.frame_index for result in results] == [0, 2, 4]
+    assert all(result.annotated_frame.shape == (120, 100, 3) for result in results)
+    assert all(result.inference_time_ms >= 0 for result in results)
+    assert capture.released is True
+
+
+@pytest.mark.parametrize("source", ["", "camera-name", "ftp://camera", -1, True])
+def test_process_stream_rejects_invalid_source(source):
+    from blindspot.ai_detection import process_stream
+
+    with pytest.raises(ValueError):
+        process_stream(source, detector=YOLODetector(model=FakeModel()))
+
+
+def test_process_stream_rejects_invalid_duration():
+    from blindspot.ai_detection import process_stream
+
+    with pytest.raises(ValueError, match="duration_seconds"):
+        process_stream("0", duration_seconds=0, detector=YOLODetector(model=FakeModel()))
