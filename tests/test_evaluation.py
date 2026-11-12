@@ -48,3 +48,9 @@ def test_rejects_invalid_box_and_latency():
         evaluate_tracking([bad], [])
     with pytest.raises(ValueError):
         evaluate_tracking([], [], inference_times_ms=[0])
+
+
+def test_id_switch_counts_consecutive_sampled_frames_with_stride():
+    gt = [row(0, 7), row(3, 7)]
+    pred = [row(0, 3), row(3, 4)]
+    assert evaluate_tracking(gt, pred)["id_switches"] == 1
