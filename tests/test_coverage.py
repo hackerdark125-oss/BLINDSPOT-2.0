@@ -66,7 +66,7 @@ def test_stereo_coverage_reports_expected_overlap_and_union():
         intrinsics(), intrinsics(), stereo(), downward_pose(), grid_size=64
     )
     assert result.camera_a_area == pytest.approx(98.01, abs=0.1)
-    assert result.camera_b_area == pytest.approx(100.0, abs=0.1)
+    assert result.camera_b_area == pytest.approx(98.01, abs=0.1)
     assert result.overlap_area == pytest.approx(78.21, abs=0.1)
     assert result.union_area == pytest.approx(117.81, abs=0.1)
     assert result.coverage_count_map.shape == (64, 64)
