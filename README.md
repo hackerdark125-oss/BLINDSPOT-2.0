@@ -29,7 +29,7 @@ BlindSpot 2.0 is an experimental computer-vision research prototype that highlig
 - ORB/RANSAC visual loop-closure candidate retrieval plus manual verified translation-only drift correction
 - Multi-camera XYZRGB point-cloud fusion using externally calibrated camera-to-world poses
 - ASCII and binary little-/big-endian PLY 1.0 import, plus a batch fusion CLI and JSON summaries
-- Stereo rectification, SGBM disparity estimation, and depth-map CSV export
+- Stereo rectification, SGBM disparity estimation with bidirectional left-right consistency rejection, and depth-map CSV export
 - CSV-based stereo-depth benchmark CLI for MAE, RMSE, relative error, and valid-pixel coverage
 - Calibration JSON export and undistortion preview
 - Weak-region prioritisation, multi-camera comparison, and CSV exports
