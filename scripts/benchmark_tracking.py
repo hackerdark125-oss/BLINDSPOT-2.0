@@ -10,14 +10,23 @@ from blindspot.evaluation import evaluate_tracking
 
 
 def read_rows(path: str):
+    """Read benchmark CSVs or the user-friendly CSV exported by the Streamlit app."""
+    aliases = {
+        "Frame index": "frame_index", "Track ID": "track_id",
+        "Class ID": "class_id", "X": "x", "Y": "y",
+        "Width": "width", "Height": "height",
+    }
     with Path(path).open("r", newline="", encoding="utf-8-sig") as handle:
-        return list(csv.DictReader(handle))
+        return [
+            {aliases.get(key, key): value for key, value in row.items()}
+            for row in csv.DictReader(handle)
+        ]
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ground-truth", required=True, help="CSV with frame_index,track_id,class_id,x,y,width,height")
-    parser.add_argument("--predictions", required=True, help="CSV with the same schema")
+    parser.add_argument("--predictions", required=True, help="CSV with the same schema or the app's AI tracking export")
     parser.add_argument("--output", default="benchmark.json", help="Output JSON path")
     parser.add_argument("--iou", type=float, default=0.5, help="IoU matching threshold (default: 0.5)")
     args = parser.parse_args()
