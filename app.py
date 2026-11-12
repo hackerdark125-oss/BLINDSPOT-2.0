@@ -872,7 +872,7 @@ else:
                                 previous_frame, depth_result.rectified_a, previous_depth,
                                 rectified_k, min_inliers=8,
                             )
-                            world_rotation, world_translation = compose_camera_to_world_pose(
+                            candidate_rotation, candidate_translation = compose_camera_to_world_pose(
                                 world_rotation, world_translation,
                                 motion.rotation_matrix, motion.translation_vector,
                             )
@@ -885,7 +885,8 @@ else:
                                 skipped += 1
                                 continue
                             local_clouds.append(local_cloud)
-                            world_poses.append((world_rotation.copy(), world_translation.copy()))
+                            world_poses.append((candidate_rotation.copy(), candidate_translation.copy()))
+                            world_rotation, world_translation = candidate_rotation, candidate_translation
                             trajectory.append({
                                 "sample_index": sample_index, "time_seconds": timestamp,
                                 "x": float(world_translation[0]), "y": float(world_translation[1]),
