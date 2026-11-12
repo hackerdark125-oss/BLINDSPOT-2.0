@@ -77,7 +77,8 @@ def capture_live_source(
                 analysis = FrameAnalysis(
                     timestamp, analysis.metrics, analysis.confidence_map,
                     motion.magnitude_map, motion.activity_age_seconds,
-                    motion.mean_magnitude,
+                    motion.mean_magnitude, motion.camera_motion_compensated,
+                    motion.scene_changed,
                 )
                 samples.append(LiveSample(analysis, change, frozen))
                 next_sample = now + sample_every_seconds

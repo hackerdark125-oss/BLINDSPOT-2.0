@@ -7,12 +7,15 @@ BlindSpot 2.0 is an experimental computer-vision research prototype that highlig
 
 ## Features
 - Analyse up to four recorded camera videos in one session
+- Align multi-camera sample timestamps with manual per-camera offsets and a configurable skew tolerance
 - Bounded live capture from a local webcam or RTSP/HTTP(S) stream
 - Configurable OpenCV sampling interval and frame limit
 - Per-cell image-quality confidence heatmaps
 - Brightness, contrast, sharpness, and edge-density metrics
 - Confidence and uncertainty trends over time
 - Dense optical-flow motion maps using Farneback
+- ORB/RANSAC global camera-motion compensation with conservative fallback when feature matches are weak
+- Histogram-based scene-change detection that resets motion history to avoid false activity spikes
 - Per-grid-cell time-since-motion activity maps
 - Repeated-frame diagnostic for potentially frozen feeds
 - Built-in HOG pedestrian detection with temporary centroid-based track IDs
@@ -20,9 +23,12 @@ BlindSpot 2.0 is an experimental computer-vision research prototype that highlig
 - Annotated sampled video frames and per-detection CSV export
 - Chessboard-based camera intrinsic and lens-distortion calibration
 - Paired chessboard stereo calibration for relative camera rotation and translation
+- Planar two-camera ground-footprint and overlap estimation from calibrated stereo pose
 - Stereo rectification, SGBM disparity estimation, and depth-map CSV export
+- CSV-based stereo-depth benchmark CLI for MAE, RMSE, relative error, and valid-pixel coverage
 - Calibration JSON export and undistortion preview
 - Weak-region prioritisation, multi-camera comparison, and CSV exports
+- Per-cell quality-score label template and human-agreement benchmark (MAE, RMSE, bias, Pearson/Spearman, score bins)
 - Unit tests and GitHub Actions CI
 
 ## Windows setup
@@ -51,7 +57,9 @@ Live capture runs on the machine hosting the Streamlit process. A remotely hoste
 
 All images must have the same resolution. A lower reprojection error is generally preferable, but it is not by itself proof of good calibration.
 
-For **Two-camera stereo extrinsics**, first calibrate each camera separately and upload both JSON files. Then upload synchronized paired chessboard photos in matching order: each pair must show the same rigid board pose from both cameras. The stereo workflow estimates relative rotation, translation, essential matrix, and fundamental matrix. Translation uses the same unit as the chessboard square size. Both cameras must have matching image dimensions and board geometry. This is a calibration result, not yet a 3D scene-coverage map.
+For **Two-camera stereo extrinsics**, first calibrate each camera separately and upload both JSON files. Then upload synchronized paired chessboard photos in matching order: each pair must show the same rigid board pose from both cameras. The stereo workflow estimates relative rotation, translation, essential matrix, and fundamental matrix. Translation uses the same unit as the chessboard square size. Both cameras must have matching image dimensions and board geometry. The recorded-video dashboard can also align sampled timelines using manual offsets and a skew tolerance; this is timestamp matching, not hardware synchronization.
+
+For **Planar coverage preview**, upload both intrinsics JSON files, the stereo extrinsics JSON, and a camera A-to-world pose JSON. The pose JSON contains a 3x3 rotation_matrix and 3D translation_vector, using the convention X_world = R × X_camera + t. OpenCV camera axes are X right, Y down, Z forward; define the world Z axis as vertical and keep all translations and plane heights in the same unit as the stereo baseline. The tool derives camera B's world pose from the stereo transform and projects each image's four corner rays onto a horizontal plane. It reports each footprint area, overlap, union, and a rasterized 0/1/2-camera coverage grid. All four corner rays must intersect the plane in front of each camera. This is a planar geometric estimate only: it does not infer camera pose, reconstruct arbitrary 3D surfaces, account for occluders, or prove image visibility.
 
 For **Stereo depth preview**, upload both intrinsic JSON files, the stereo extrinsics JSON, and a synchronized image pair from the calibrated cameras. The app rectifies the pair, estimates disparity with StereoSGBM, and reprojects disparity into a depth map. Depth units follow the chessboard square-size unit. Depth quality depends on accurate calibration, fixed camera geometry, synchronization, texture, and visibility in both views; invalid pixels are expected around occlusions and low-texture regions. This is a prototype depth estimate, not a safety or measurement guarantee.
 
@@ -59,7 +67,7 @@ For **Stereo depth preview**, upload both intrinsic JSON files, the stereo extri
 Select **Person detection & tracking** and upload a short video. The app uses OpenCV's built-in HOG + linear SVM pedestrian detector and a nearest-centroid tracker to associate detections across sampled frames. It displays annotated frames and exports timestamps, temporary track IDs, bounding boxes, and detector scores as CSV. This classical detector targets upright pedestrians; it is not a general object detector and may miss small, occluded, distant, or unusual poses. Track IDs are local to one video and can switch after occlusion or abrupt movement.
 
 ## Understanding motion activity age
-The motion tracker computes dense optical flow between sampled frames with OpenCV's Farneback algorithm. Each grid cell stores its average flow magnitude and elapsed time since motion last exceeded a configurable threshold.
+The motion tracker estimates global frame-to-frame camera motion from ORB feature matches and a RANSAC affine transform, aligns the previous frame, then measures residual dense optical flow with Farneback. If there are too few reliable matches, it falls back to unaligned optical flow. A grayscale histogram change detector resets motion history after likely scene cuts instead of reporting a misleading large motion spike. The dashboard report records whether compensation was applied and whether a scene change was detected. These are approximate image-space diagnostics, not visual odometry, camera pose, or proof of object motion. Each grid cell stores residual flow magnitude and elapsed time since it last exceeded a configurable threshold.
 
 **Activity age is not observation freshness.** A perfectly static scene can have a high activity age even while the camera is operating correctly. Camera movement, lighting changes, compression artefacts, and sampling interval can affect optical-flow values. Use these maps as diagnostics for human review, not as proof that an area is unseen or stale.
 
@@ -105,15 +113,18 @@ Each sampled frame is divided into a configurable grid. Every cell receives a he
 - [x] Baseline pedestrian detection and short-term centroid tracking
 - [x] Optional YOLO11 detection across all 80 COCO classes with ByteTrack IDs
 - [x] Quantitative detection/tracking evaluator and per-frame processing benchmark tooling
-- [ ] Scene-change-aware activity baselines and robust camera-motion compensation
-- [ ] Multi-camera time synchronisation and validated 3D coverage reconstruction
+- [x] Scene-change resets and ORB/RANSAC global camera-motion compensation for motion diagnostics
+- [x] Multi-camera timestamp alignment utility and dashboard export (manual offsets; no hardware sync guarantee)
+- [x] Planar two-camera ground-footprint and overlap estimator using supplied camera pose
+- [ ] Visual-localisation-based pose estimation and validated 3D coverage reconstruction
 - [ ] Geometric multi-camera coverage estimation using camera pose / visual localisation
-- [ ] Validated uncertainty model and benchmark dataset
-- [ ] Quantitative stereo-depth benchmark against known-distance scenes
+- [x] Quality-score agreement evaluator and per-cell human-label export tooling
+- [ ] Validated uncertainty model and representative benchmark dataset
+- [x] Quantitative stereo-depth benchmark evaluator and CLI for known-distance samples
 
 ## Limitations and safety
 - Image-quality and motion maps are diagnostics, not measurements of physical-world visibility or 3D coverage.
-- Camera views are analysed independently; no calibration or cross-camera geometry is inferred.
+- Planar coverage uses supplied calibration and camera pose; it does not infer pose or reconstruct arbitrary 3D scene geometry.
 - Texture and edge density do not guarantee useful semantic information.
 - Static scenes may show high activity age; repeated frames do not alone prove camera failure.
 - Results are decision-support signals only. Do not use this prototype for flight control, navigation, targeting, or safety-critical inspection.
@@ -128,6 +139,34 @@ Python · OpenCV · NumPy · Pandas · Plotly · Streamlit · Pytest · GitHub A
 
 ## License
 MIT
+
+## Image-quality score evaluation
+
+The app can export a per-cell CSV template containing the heuristic `predicted_score` and an empty `reference_score` column. Review cells using a consistent human rubric (for example, 0 = unusable image detail and 100 = excellent usable detail), fill the reference scores, then run:
+
+```bat
+python scripts/benchmark_quality.py --input quality_labels.csv --output quality_benchmark.json
+```
+
+The report compares score agreement using MAE, RMSE, mean bias, Pearson and Spearman correlation, and score-bin summaries. This evaluates agreement with the labels you provide; it does not make the score a probability or prove generalisation beyond the labelled scenes.
+
+## Stereo depth benchmark
+
+The depth benchmark compares measured target distances with the median depth estimated from the corresponding target region. Create a CSV with one row per measured target/sample and these columns:
+
+```csv
+known_distance,measured_distance,valid_pixels,total_pixels,unit
+100,104,8500,10000,cm
+200,188,7600,10000,cm
+```
+
+Use the same distance unit for every row. If a target has no valid depth pixels, leave measured_distance empty and set valid_pixels to 0. Run:
+
+```bat
+python scripts/benchmark_depth.py --input depth_samples.csv --output depth_benchmark.json
+```
+
+The report contains MAE, RMSE, median absolute error, mean absolute relative error, valid-pixel percentage, and counts of measured/skipped samples. This is an evaluation utility; it does not create measured results or validate a camera rig by itself.
 
 ## Quantitative detection and tracking benchmark
 

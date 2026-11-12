@@ -28,6 +28,8 @@ class FrameAnalysis:
     motion_magnitude_map: np.ndarray | None = None
     motion_age_seconds: np.ndarray | None = None
     mean_motion: float | None = None
+    camera_motion_compensated: bool = False
+    scene_changed: bool = False
 
 
 def _validate_grid_size(grid_size: int) -> None:
@@ -53,7 +55,14 @@ def analyse_frame(frame: np.ndarray, grid_size: int = 8) -> FrameAnalysis:
     else:
         raise ValueError("frame must be grayscale, BGR, or BGRA")
 
-    gray = cv2.resize(gray, (max(grid_size * 24, 96), max(grid_size * 24, 96)))
+    target_size = max(grid_size * 24, 96)
+    height, width = gray.shape
+    scale = target_size / max(height, width)
+    gray = cv2.resize(
+        gray,
+        (max(1, int(round(width * scale))), max(1, int(round(height * scale)))),
+        interpolation=cv2.INTER_AREA,
+    )
     h, w = gray.shape
     scores, brightnesses, contrasts, sharpnesses, edges_all = [], [], [], [], []
     for row in range(grid_size):
@@ -116,7 +125,8 @@ def sample_video(path: str, sample_every_seconds: float = 1.0,
                 results.append(FrameAnalysis(
                     timestamp, result.metrics, result.confidence_map,
                     motion.magnitude_map, motion.activity_age_seconds,
-                    motion.mean_magnitude,
+                    motion.mean_magnitude, motion.camera_motion_compensated,
+                    motion.scene_changed,
                 ))
             index += 1
     finally:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
 
@@ -14,10 +15,12 @@ from blindspot.live import capture_live_source
 from blindspot.calibration import calibrate_camera, load_calibration_json, undistort_frame
 from blindspot.people import process_video as process_people_video
 from blindspot.ai_detection import YOLODetector, process_video as process_ai_video
+from blindspot.synchronization import synchronize_timestamps
 from blindspot.stereo import (
     calibrate_stereo_cameras, load_stereo_calibration_json,
     rectify_and_compute_depth,
 )
+from blindspot.coverage import load_camera_pose_json, estimate_stereo_planar_coverage
 
 
 @st.cache_resource(show_spinner=False)
@@ -55,6 +58,8 @@ def render_results(name: str, results, live: bool = False) -> pd.DataFrame:
         "Sharpness": a.metrics.sharpness,
         "Edge density": a.metrics.edge_density,
         "Mean motion": a.mean_motion,
+        "Camera motion compensated": a.camera_motion_compensated,
+        "Scene change detected": a.scene_changed,
         "Maximum activity age (s)": (
             float(a.motion_age_seconds.max()) if a.motion_age_seconds is not None else None
         ),
@@ -68,6 +73,8 @@ def render_results(name: str, results, live: bool = False) -> pd.DataFrame:
     b.metric("Mean uncertainty", f"{summary['Uncertainty'].mean():.1f}/100")
     c.metric("Frames sampled", len(results))
     d.metric("Mean motion", f"{summary['Mean motion'].mean():.2f}")
+    if summary["Scene change detected"].any():
+        st.warning(f"Scene change reset applied to {int(summary['Scene change detected'].sum())} sampled frame(s).")
 
     trend = px.line(summary, x="Time (s)", y=["Confidence", "Uncertainty"],
                     title="Confidence and uncertainty over time", markers=True)
@@ -115,6 +122,25 @@ def render_results(name: str, results, live: bool = False) -> pd.DataFrame:
         file_name=f"{Path(name).stem}_blindspot_report.csv",
         mime="text/csv", key=f"download_{name}_{'live' if live else 'video'}",
     )
+    cell_rows = [
+        {
+            "sample_index": sample_index,
+            "time_seconds": analysis.timestamp_seconds,
+            "grid_row": row,
+            "grid_column": column,
+            "predicted_score": float(analysis.confidence_map[row, column]),
+            "reference_score": "",
+        }
+        for sample_index, analysis in enumerate(analyses)
+        for row in range(analysis.confidence_map.shape[0])
+        for column in range(analysis.confidence_map.shape[1])
+    ]
+    st.download_button(
+        "Download per-cell quality labels template (CSV)",
+        pd.DataFrame(cell_rows).to_csv(index=False).encode("utf-8"),
+        file_name=f"{Path(name).stem}_quality_labels_template.csv",
+        mime="text/csv", key=f"quality_labels_{name}_{'live' if live else 'video'}",
+    )
     return summary
 
 
@@ -127,8 +153,16 @@ if mode == "Recorded videos":
         if len(uploads) > 4:
             st.warning("Only the first four videos will be analysed.")
         camera_summaries = []
+        camera_streams = {}
+        camera_offsets = {}
         for i, upload in enumerate(uploads[:4]):
-            st.subheader(f"Camera {i+1} · {upload.name}")
+            camera_label = f"Camera {i+1} · {upload.name}"
+            st.subheader(camera_label)
+            camera_offsets[camera_label] = st.number_input(
+                "Timeline offset (seconds; added to sample timestamps)",
+                min_value=-3600.0, max_value=3600.0, value=0.0, step=0.1,
+                key=f"camera_time_offset_{i}",
+            )
             suffix = Path(upload.name).suffix or ".mp4"
             try:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -140,6 +174,7 @@ if mode == "Recorded videos":
                 finally:
                     Path(temp_path).unlink(missing_ok=True)
                 summary = render_results(upload.name, results)
+                camera_streams[camera_label] = [item.timestamp_seconds for item in results]
                 camera_summaries.append({
                     "Camera": upload.name,
                     "Mean confidence": summary["Confidence"].mean(),
@@ -161,6 +196,45 @@ if mode == "Recorded videos":
                 file_name="blindspot_camera_comparison.csv",
                 mime="text/csv", key="download_comparison",
             )
+            if len(camera_streams) >= 2:
+                st.divider()
+                st.subheader("Multi-camera timestamp alignment")
+                st.caption(
+                    "Set each camera's timeline offset if recording start times differ. "
+                    "This aligns sampled timestamps only; it does not prove hardware synchronization "
+                    "or that frames depict the exact same instant."
+                )
+                tolerance = st.slider(
+                    "Maximum allowed inter-camera skew (seconds)",
+                    min_value=0.01, max_value=1.0, value=0.25, step=0.01,
+                    key="camera_sync_tolerance",
+                )
+                aligned = synchronize_timestamps(
+                    camera_streams, camera_offsets, tolerance_seconds=float(tolerance)
+                )
+                if aligned:
+                    aligned_rows = []
+                    for match in aligned:
+                        row = {"Reference time (s)": match["reference_time_seconds"]}
+                        for camera_name, sample in match["samples"].items():
+                            row[f"{camera_name} · sample"] = sample["sample_index"]
+                            row[f"{camera_name} · source time (s)"] = sample["source_time_seconds"]
+                            row[f"{camera_name} · skew (s)"] = sample["skew_seconds"]
+                        aligned_rows.append(row)
+                    aligned_df = pd.DataFrame(aligned_rows)
+                    st.metric("Aligned multi-camera sample groups", len(aligned_df))
+                    st.dataframe(aligned_df, use_container_width=True, hide_index=True)
+                    st.download_button(
+                        "Download synchronized sample index (CSV)",
+                        aligned_df.to_csv(index=False).encode("utf-8"),
+                        file_name="blindspot_synchronized_camera_samples.csv",
+                        mime="text/csv", key="download_sync_index",
+                    )
+                else:
+                    st.warning(
+                        "No sample groups fell within the selected skew tolerance. "
+                        "Adjust the per-camera offsets or increase the tolerance."
+                    )
             st.success(f"Analysis completed for {len(camera_summaries)} camera feed(s).")
     else:
         st.write("Upload one or more short recordings to begin.")
@@ -404,7 +478,7 @@ else:
     st.subheader("Camera calibration")
     calibration_mode = st.radio(
         "Calibration workflow",
-        ["Single-camera intrinsics", "Two-camera stereo extrinsics", "Stereo depth preview"],
+        ["Single-camera intrinsics", "Two-camera stereo extrinsics", "Stereo depth preview", "Planar coverage preview"],
         horizontal=True,
     )
     if calibration_mode == "Single-camera intrinsics":
@@ -559,7 +633,7 @@ else:
                     st.error(f"Stereo calibration failed: {exc}")
 
 
-    else:
+    elif calibration_mode == "Stereo depth preview":
         st.write(
             "Upload calibrated camera intrinsics, stereo extrinsics, and a synchronized "
             "image pair. The app rectifies the pair and estimates disparity/depth with SGBM."
@@ -659,6 +733,102 @@ else:
                     )
             except Exception as exc:
                 st.error(f"Stereo depth estimation failed: {exc}")
+
+    else:
+        st.write(
+            "Estimate where two calibrated cameras project onto a known horizontal plane. "
+            "This requires stereo calibration plus camera A's camera-to-world pose."
+        )
+        st.warning(
+            "This is a planar geometric footprint only, not 3D reconstruction or proof of "
+            "visibility. Camera pose, plane height, and stereo translation must use the same "
+            "world coordinate frame and distance unit."
+        )
+        st.download_button(
+            "Download example downward-facing camera pose JSON",
+            json.dumps({
+                "rotation_matrix": [[1, 0, 0], [0, -1, 0], [0, 0, -1]],
+                "translation_vector": [0, 0, 2],
+            }, indent=2).encode("utf-8"),
+            file_name="example_camera_a_world_pose.json",
+            mime="application/json",
+        )
+        col_a, col_b = st.columns(2)
+        with col_a:
+            coverage_intrinsics_a = st.file_uploader(
+                "Camera A intrinsics JSON", type=["json"], key="coverage_intrinsics_a"
+            )
+            coverage_pose_a = st.file_uploader(
+                "Camera A to-world pose JSON", type=["json"], key="coverage_pose_a"
+            )
+        with col_b:
+            coverage_intrinsics_b = st.file_uploader(
+                "Camera B intrinsics JSON", type=["json"], key="coverage_intrinsics_b"
+            )
+            coverage_stereo = st.file_uploader(
+                "Stereo extrinsics JSON", type=["json"], key="coverage_stereo"
+            )
+        plane_z = st.number_input("World ground-plane Z", value=0.0, step=0.1)
+        coverage_grid_size = st.slider(
+            "Coverage map resolution", min_value=32, max_value=256, value=128, step=16
+        )
+        ready_coverage = bool(
+            coverage_intrinsics_a and coverage_intrinsics_b and coverage_pose_a and coverage_stereo
+        )
+        if st.button("Estimate planar camera coverage", type="primary", disabled=not ready_coverage):
+            try:
+                calibration_a = load_calibration_json(coverage_intrinsics_a.getvalue().decode("utf-8"))
+                calibration_b = load_calibration_json(coverage_intrinsics_b.getvalue().decode("utf-8"))
+                stereo = load_stereo_calibration_json(coverage_stereo.getvalue().decode("utf-8"))
+                pose_a = load_camera_pose_json(coverage_pose_a.getvalue().decode("utf-8"))
+                with st.spinner("Projecting image footprints onto the selected world plane..."):
+                    coverage_result = estimate_stereo_planar_coverage(
+                        calibration_a, calibration_b, stereo, pose_a,
+                        plane_z=float(plane_z), grid_size=int(coverage_grid_size),
+                    )
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Camera A footprint", f"{coverage_result.camera_a_area:.2f} {stereo.translation_unit}²")
+                m2.metric("Camera B footprint", f"{coverage_result.camera_b_area:.2f} {stereo.translation_unit}²")
+                m3.metric("Overlap area", f"{coverage_result.overlap_area:.2f} {stereo.translation_unit}²")
+                m4.metric("Combined area", f"{coverage_result.union_area:.2f} {stereo.translation_unit}²")
+                coverage_figure = px.imshow(
+                    coverage_result.coverage_count_map,
+                    x=np.linspace(coverage_result.x_min, coverage_result.x_max, coverage_result.coverage_count_map.shape[1]),
+                    y=np.linspace(coverage_result.y_max, coverage_result.y_min, coverage_result.coverage_count_map.shape[0]),
+                    origin="upper",
+                    labels={"x": f"World X ({stereo.translation_unit})", "y": f"World Y ({stereo.translation_unit})", "color": "Camera count"},
+                    title="Planar camera footprint overlap (0, 1, or 2 cameras)",
+                )
+                coverage_figure.update_layout(height=500, yaxis_scaleanchor="x")
+                st.plotly_chart(coverage_figure, use_container_width=True)
+                st.download_button(
+                    "Download planar coverage grid (CSV)",
+                    pd.DataFrame(coverage_result.coverage_count_map).to_csv(index=False).encode("utf-8"),
+                    file_name="blindspot_planar_coverage_grid.csv", mime="text/csv",
+                )
+                coverage_summary = {
+                    "distance_unit": stereo.translation_unit,
+                    "plane_z": coverage_result.plane_z,
+                    "camera_a_area": coverage_result.camera_a_area,
+                    "camera_b_area": coverage_result.camera_b_area,
+                    "overlap_area": coverage_result.overlap_area,
+                    "union_area": coverage_result.union_area,
+                    "world_x_min": coverage_result.x_min,
+                    "world_x_max": coverage_result.x_max,
+                    "world_y_min": coverage_result.y_min,
+                    "world_y_max": coverage_result.y_max,
+                    "camera_a_polygon_xy": coverage_result.polygon_a.tolist(),
+                    "camera_b_polygon_xy": coverage_result.polygon_b.tolist(),
+                    "grid_resolution": int(coverage_grid_size),
+                }
+                st.download_button(
+                    "Download planar coverage summary (JSON)",
+                    json.dumps(coverage_summary, indent=2).encode("utf-8"),
+                    file_name="blindspot_planar_coverage_summary.json",
+                    mime="application/json",
+                )
+            except Exception as exc:
+                st.error(f"Planar coverage estimation failed: {exc}")
 
 
 
