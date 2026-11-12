@@ -25,6 +25,9 @@ from blindspot.reconstruction import (
     depth_to_point_cloud, write_ply, estimate_stereo_visual_motion,
     compose_camera_to_world_pose, fuse_point_clouds,
 )
+from blindspot.uncertainty import (
+    evaluate_calibration, fit_isotonic_calibrator, apply_isotonic_calibrator,
+)
 
 
 @st.cache_resource(show_spinner=False)
@@ -482,10 +485,89 @@ else:
     st.subheader("Camera calibration")
     calibration_mode = st.radio(
         "Calibration workflow",
-        ["Single-camera intrinsics", "Two-camera stereo extrinsics", "Stereo depth preview", "Stereo visual odometry & 3D fusion", "Planar coverage preview"],
+        ["Single-camera intrinsics", "Two-camera stereo extrinsics", "Stereo depth preview", "Stereo visual odometry & 3D fusion", "Planar coverage preview", "Uncertainty calibration"],
         horizontal=True,
     )
-    if calibration_mode == "Single-camera intrinsics":
+    if calibration_mode == "Uncertainty calibration":
+        st.write(
+            "Fit a monotone isotonic confidence mapping on one labelled training CSV, "
+            "then evaluate raw and calibrated scores on a separate held-out CSV."
+        )
+        st.warning(
+            "Do not use the held-out evaluation file to fit the calibrator. Confidence "
+            "values must be probabilities between 0 and 1, and outcomes must be independently "
+            "labelled as 0 or 1. The existing image-quality score (0–100) is not a probability."
+        )
+        train_file = st.file_uploader(
+            "Calibration training labels CSV", type=["csv"], key="uncertainty_train_csv"
+        )
+        eval_file = st.file_uploader(
+            "Held-out evaluation labels CSV", type=["csv"], key="uncertainty_eval_csv"
+        )
+        bin_count = st.slider("Reliability bins", min_value=5, max_value=20, value=10, key="uncertainty_bins")
+        if st.button("Fit calibrator and evaluate held-out data", type="primary", disabled=not (train_file and eval_file)):
+            try:
+                train_frame = pd.read_csv(train_file)
+                eval_frame = pd.read_csv(eval_file)
+                required_columns = {"predicted_confidence", "outcome"}
+                if not required_columns.issubset(train_frame.columns) or not required_columns.issubset(eval_frame.columns):
+                    raise ValueError("both CSV files must contain predicted_confidence and outcome columns")
+                train_samples = train_frame[["predicted_confidence", "outcome"]].to_dict(orient="records")
+                eval_samples = eval_frame[["predicted_confidence", "outcome"]].to_dict(orient="records")
+                calibrator = fit_isotonic_calibrator(train_samples)
+                raw_metrics = evaluate_calibration(eval_samples, bins=int(bin_count))
+                calibrated_scores = apply_isotonic_calibrator(
+                    [sample["predicted_confidence"] for sample in eval_samples], calibrator
+                )
+                calibrated_samples = [
+                    {"predicted_confidence": score, "outcome": sample["outcome"]}
+                    for score, sample in zip(calibrated_scores, eval_samples)
+                ]
+                calibrated_metrics = evaluate_calibration(calibrated_samples, bins=int(bin_count))
+                st.success(
+                    f"Calibrator fitted on {len(train_samples):,} training labels and evaluated "
+                    f"on {len(eval_samples):,} separate held-out labels."
+                )
+                metric_rows = [
+                    {"Metric": "Brier score", "Before": raw_metrics["brier_score"], "After": calibrated_metrics["brier_score"]},
+                    {"Metric": "Log loss", "Before": raw_metrics["log_loss"], "After": calibrated_metrics["log_loss"]},
+                    {"Metric": "Expected calibration error", "Before": raw_metrics["expected_calibration_error"], "After": calibrated_metrics["expected_calibration_error"]},
+                ]
+                st.dataframe(pd.DataFrame(metric_rows), use_container_width=True, hide_index=True)
+                raw_bins = pd.DataFrame(raw_metrics["reliability_bins"])
+                calibrated_bins = pd.DataFrame(calibrated_metrics["reliability_bins"])
+                if not raw_bins.empty and not calibrated_bins.empty:
+                    raw_bins["Series"] = "Before calibration"
+                    calibrated_bins["Series"] = "After calibration"
+                    reliability = pd.concat([raw_bins, calibrated_bins], ignore_index=True)
+                    figure = px.line(
+                        reliability, x="mean_confidence", y="observed_frequency",
+                        color="Series", markers=True,
+                        title="Held-out reliability diagram",
+                        labels={"mean_confidence": "Mean predicted confidence", "observed_frequency": "Observed positive frequency"},
+                    )
+                    figure.add_shape(type="line", x0=0, y0=0, x1=1, y1=1, line={"dash": "dash"})
+                    figure.update_layout(height=420, xaxis_range=[0, 1], yaxis_range=[0, 1])
+                    st.plotly_chart(figure, use_container_width=True)
+                st.write("**Held-out reliability bins · before calibration**")
+                st.dataframe(raw_bins.drop(columns=["Series"], errors="ignore"), use_container_width=True, hide_index=True)
+                st.write("**Held-out reliability bins · after calibration**")
+                st.dataframe(calibrated_bins.drop(columns=["Series"], errors="ignore"), use_container_width=True, hide_index=True)
+                st.download_button(
+                    "Download fitted isotonic calibrator (JSON)",
+                    json.dumps(calibrator, indent=2).encode("utf-8"),
+                    file_name="blindspot_isotonic_calibrator.json", mime="application/json",
+                )
+                output = eval_frame.copy()
+                output["calibrated_confidence"] = calibrated_scores
+                st.download_button(
+                    "Download held-out calibrated scores (CSV)",
+                    output.to_csv(index=False).encode("utf-8"),
+                    file_name="blindspot_heldout_calibrated_scores.csv", mime="text/csv",
+                )
+            except Exception as exc:
+                st.error(f"Uncertainty calibration failed: {exc}")
+    elif calibration_mode == "Single-camera intrinsics":
         st.write(
             "Upload multiple photos of the same printed chessboard taken from different "
             "positions and angles. Calibration estimates camera intrinsics and lens distortion."
