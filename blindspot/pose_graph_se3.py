@@ -178,6 +178,7 @@ def optimize_pose_graph_se3(
             break
 
         accepted = False
+        previous_cost = current_cost
         scale = 1.0
         for _ in range(12):
             candidate = current + scale * update
@@ -192,7 +193,7 @@ def optimize_pose_graph_se3(
             damping *= 10.0
             if damping > 1e8:
                 break
-        elif abs(candidate_cost - current_cost) < tolerance:
+        elif abs(previous_cost - current_cost) < tolerance:
             converged = True
             break
 
