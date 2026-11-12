@@ -8,7 +8,7 @@ from statistics import median
 from typing import Iterable, Mapping, Any
 
 
-def evaluate_depth_samples(samples: Iterable[Mapping[str, Any]]) -> dict[str, float | int]:
+def evaluate_depth_samples(samples: Iterable[Mapping[str, Any]]) -> dict[str, float | int | None]:
     """Evaluate per-target median depth and aggregate valid-pixel coverage.
 
     Each row requires known_distance, valid_pixels, and total_pixels. A missing
