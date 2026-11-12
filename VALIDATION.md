@@ -185,7 +185,7 @@ The included evaluator uses greedy class-aware IoU matching and counts ID change
 
 - [ ] Install optional AI dependencies from `requirements-ai.txt` and verify YOLO weights are available.
 - [ ] Run the same stereo clip once with masking disabled and once enabled.
-- [ ] Confirm object boxes are excluded from the point-cloud depth mask and previous-frame PnP feature mask.
+- [ ] Confirm only tracked objects whose centers move beyond the configured pixel threshold are excluded from the point-cloud depth mask and previous-frame PnP feature mask.
 - [ ] Compare point counts and inspect both PLY outputs; do not assume fewer points always means better reconstruction.
 - [ ] Record missed detections and static objects incorrectly masked.
 - [ ] Repeat with people/vehicles at different scales and partial occlusion.

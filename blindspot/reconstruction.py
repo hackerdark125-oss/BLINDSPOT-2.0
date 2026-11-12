@@ -157,6 +157,45 @@ def estimate_visual_motion(
     )
 
 
+def select_moving_detection_regions(
+    detections: list[Any] | tuple[Any, ...],
+    previous_centers: dict[int, tuple[float, float]],
+    min_displacement_pixels: float = 4.0,
+) -> tuple[list[tuple[int, int, int, int]], dict[int, tuple[float, float]]]:
+    """Select tracked detections whose centers moved enough since the last sample.
+
+    Detections without a ByteTrack ID are ignored because motion cannot be
+    distinguished from a new/static object without persistent identity.
+    """
+    if not np.isfinite(min_displacement_pixels) or min_displacement_pixels < 0:
+        raise ValueError("min_displacement_pixels must be non-negative and finite")
+    if not isinstance(previous_centers, dict):
+        raise ValueError("previous_centers must be a dictionary")
+    centers = dict(previous_centers)
+    moving_boxes: list[tuple[int, int, int, int]] = []
+    for item in detections:
+        track_id = getattr(item, "track_id", None)
+        if track_id is None:
+            continue
+        if isinstance(track_id, bool) or not isinstance(track_id, (int, np.integer)):
+            raise ValueError("detection track_id must be an integer or None")
+        x, y = getattr(item, "x", None), getattr(item, "y", None)
+        width, height = getattr(item, "width", None), getattr(item, "height", None)
+        values = (x, y, width, height)
+        if any(isinstance(value, bool) or not isinstance(value, (int, np.integer)) for value in values):
+            raise ValueError("detection boxes must contain integer x, y, width, and height")
+        if width <= 0 or height <= 0:
+            raise ValueError("detection box dimensions must be positive")
+        center = (float(x) + float(width) / 2.0, float(y) + float(height) / 2.0)
+        old_center = centers.get(int(track_id))
+        if old_center is not None:
+            displacement = float(np.hypot(center[0] - old_center[0], center[1] - old_center[1]))
+            if displacement >= float(min_displacement_pixels):
+                moving_boxes.append((int(x), int(y), int(width), int(height)))
+        centers[int(track_id)] = center
+    return moving_boxes, centers
+
+
 def exclude_detection_regions(
     valid_mask: np.ndarray,
     boxes: list[tuple[int, int, int, int]] | tuple[tuple[int, int, int, int], ...],

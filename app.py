@@ -24,6 +24,7 @@ from blindspot.coverage import load_camera_pose_json, estimate_stereo_planar_cov
 from blindspot.reconstruction import (
     depth_to_point_cloud, write_ply, estimate_stereo_visual_motion,
     compose_camera_to_world_pose, fuse_point_clouds, exclude_detection_regions,
+    select_moving_detection_regions,
 )
 from blindspot.uncertainty import (
     evaluate_calibration, fit_isotonic_calibrator, apply_isotonic_calibrator,
@@ -878,13 +879,17 @@ else:
             vo_stride = st.select_slider("Point-cloud pixel stride", options=[2, 3, 4, 6, 8], value=4, key="vo_stride")
         vo_voxel = st.number_input("Voxel averaging size (stereo distance units)", min_value=0.001, value=1.0, step=0.1, key="vo_voxel")
         vo_remove_dynamic = st.checkbox(
-            "Mask detected moving objects before 3D fusion (optional YOLO)",
+            "Filter tracked moving objects before 3D fusion (optional YOLO + ByteTrack)",
             value=False, key="vo_remove_dynamic",
-            help="Requires the optional AI dependencies in requirements-ai.txt. Detected object boxes are excluded from stereo depth features and exported point clouds."
+            help="Requires requirements-ai.txt. Only objects with persistent ByteTrack IDs that move beyond the pixel threshold are masked; new/untracked objects are not classified as moving."
         )
         vo_ai_weights = st.selectbox(
             "Dynamic-object detector weights", ["yolo11n.pt", "yolo11s.pt"],
             disabled=not vo_remove_dynamic, key="vo_dynamic_weights",
+        )
+        vo_motion_threshold = st.slider(
+            "Minimum track movement to mask (pixels)", 1.0, 20.0, 4.0, 1.0,
+            disabled=not vo_remove_dynamic, key="vo_motion_threshold",
         )
         ready_vo = bool(vo_video_a and vo_video_b and vo_intrinsics_a and vo_intrinsics_b and vo_stereo_json)
         if st.button("Run stereo visual odometry & fuse 3D scene", type="primary", disabled=not ready_vo):
@@ -918,6 +923,7 @@ else:
                 previous_frame = previous_depth = previous_valid_mask = None
                 world_rotation, world_translation = np.eye(3), np.zeros(3)
                 processed, skipped, masked_detections = 0, 0, 0
+                previous_track_centers = {}
                 progress = st.progress(0.0)
                 status = st.empty()
                 for sample_index in range(int(vo_limit)):
@@ -939,14 +945,16 @@ else:
                             continue
                         frame_valid_mask = depth_result.valid_mask.copy()
                         if dynamic_detector is not None:
-                            dynamic_boxes = dynamic_detector.track_frame(
+                            tracked_boxes = dynamic_detector.track_frame(
                                 depth_result.rectified_a, confidence=0.25, image_size=640
                             )
-                            masked_detections += len(dynamic_boxes)
+                            moving_boxes, previous_track_centers = select_moving_detection_regions(
+                                tracked_boxes, previous_track_centers,
+                                min_displacement_pixels=float(vo_motion_threshold),
+                            )
+                            masked_detections += len(moving_boxes)
                             frame_valid_mask = exclude_detection_regions(
-                                frame_valid_mask,
-                                [(item.x, item.y, item.width, item.height) for item in dynamic_boxes],
-                                padding=8,
+                                frame_valid_mask, moving_boxes, padding=8,
                             )
                         if int(frame_valid_mask.sum()) < 100:
                             skipped += 1
@@ -1027,7 +1035,7 @@ else:
                     m3.metric("Fused 3D points", f"{len(fused):,}")
                     if dynamic_detector is not None:
                         st.metric("Detected object regions masked", masked_detections)
-                        st.caption("Dynamic-object masking is detector-dependent; missed objects and background false positives remain possible.")
+                        st.caption("Only tracked objects moving beyond the selected image-space threshold are masked. This assumes a fixed camera rig; missed detections and camera movement can still cause errors.")
                     st.dataframe(pd.DataFrame(trajectory), use_container_width=True, hide_index=True)
                     st.download_button(
                         "Download fused multi-frame 3D scene (PLY)", ply_bytes,
