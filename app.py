@@ -29,6 +29,7 @@ from blindspot.reconstruction import (
 from blindspot.uncertainty import (
     evaluate_calibration, fit_isotonic_calibrator, apply_isotonic_calibrator,
 )
+from blindspot.pose_graph import optimize_pose_graph_translations
 
 
 @st.cache_resource(show_spinner=False)
@@ -1046,9 +1047,94 @@ else:
                         pd.DataFrame(trajectory).to_csv(index=False).encode("utf-8"),
                         file_name="blindspot_camera_trajectory.csv", mime="text/csv",
                     )
+                    if len(trajectory) >= 2:
+                        with st.expander("Optional · correct drift with a verified loop closure"):
+                            st.warning(
+                                "Only enter a loop closure measured independently (for example, a verified "
+                                "revisit displacement). The software does not discover loop closures. A wrong "
+                                "constraint can make the reconstruction less accurate."
+                            )
+                            st.caption(
+                                "Indices refer to rows in the reconstructed trajectory table, not original video frame numbers. "
+                                f"Displacements use {stereo.translation_unit} in the shared world coordinate frame."
+                            )
+                            closure_start, closure_end = st.columns(2)
+                            with closure_start:
+                                start_index = st.selectbox(
+                                    "Trajectory start row", options=list(range(len(trajectory))),
+                                    index=0, key="pose_graph_start_index",
+                                )
+                            with closure_end:
+                                end_index = st.selectbox(
+                                    "Trajectory end row", options=list(range(len(trajectory))),
+                                    index=len(trajectory) - 1, key="pose_graph_end_index",
+                                )
+                            delta_cols = st.columns(4)
+                            with delta_cols[0]:
+                                measured_dx = st.number_input("Measured ΔX", value=0.0, key="pose_graph_dx")
+                            with delta_cols[1]:
+                                measured_dy = st.number_input("Measured ΔY", value=0.0, key="pose_graph_dy")
+                            with delta_cols[2]:
+                                measured_dz = st.number_input("Measured ΔZ", value=0.0, key="pose_graph_dz")
+                            with delta_cols[3]:
+                                closure_weight = st.number_input(
+                                    "Constraint weight", min_value=0.01, value=100.0, step=1.0,
+                                    key="pose_graph_weight",
+                                )
+                            if st.button(
+                                "Apply verified loop-closure correction",
+                                key="apply_pose_graph_correction",
+                                disabled=start_index >= end_index,
+                            ):
+                                try:
+                                    raw_positions = [[row["x"], row["y"], row["z"]] for row in trajectory]
+                                    corrected_positions = optimize_pose_graph_translations(
+                                        raw_positions,
+                                        [(int(start_index), int(end_index),
+                                          [float(measured_dx), float(measured_dy), float(measured_dz)],
+                                          float(closure_weight))],
+                                    )
+                                    corrected_poses = [
+                                        (rotation, np.asarray(corrected_positions[index], dtype=float))
+                                        for index, (rotation, _) in enumerate(world_poses)
+                                    ]
+                                    corrected_fused = fuse_point_clouds(
+                                        local_clouds, corrected_poses, voxel_size=float(vo_voxel)
+                                    )
+                                    corrected_trajectory = pd.DataFrame(trajectory).copy()
+                                    corrected_array = np.asarray(corrected_positions, dtype=float)
+                                    corrected_trajectory[["x", "y", "z"]] = corrected_array
+                                    with tempfile.TemporaryDirectory() as corrected_dir:
+                                        corrected_path = write_ply(
+                                            Path(corrected_dir) / "blindspot_drift_corrected_scene.ply",
+                                            corrected_fused,
+                                        )
+                                        corrected_ply_bytes = corrected_path.read_bytes()
+                                    st.success(
+                                        "Applied the supplied loop-closure constraint. Compare this result "
+                                        "with the uncorrected trajectory and measured reference before relying on it."
+                                    )
+                                    st.dataframe(corrected_trajectory, use_container_width=True, hide_index=True)
+                                    st.download_button(
+                                        "Download drift-corrected 3D scene (PLY)",
+                                        corrected_ply_bytes,
+                                        file_name="blindspot_drift_corrected_scene.ply",
+                                        mime="application/octet-stream",
+                                        key="download_drift_corrected_scene",
+                                    )
+                                    st.download_button(
+                                        "Download drift-corrected trajectory (CSV)",
+                                        corrected_trajectory.to_csv(index=False).encode("utf-8"),
+                                        file_name="blindspot_drift_corrected_trajectory.csv",
+                                        mime="text/csv",
+                                        key="download_drift_corrected_trajectory",
+                                    )
+                                except Exception as correction_exc:
+                                    st.error(f"Loop-closure correction failed: {correction_exc}")
                     st.caption(
                         f"All translations and 3D coordinates use {stereo.translation_unit}. "
-                        "The trajectory is locally chained and may drift; no loop closure or global correction is applied."
+                        "The raw trajectory is locally chained and may drift. Optional correction "
+                        "requires an independently verified loop-closure measurement."
                     )
             except Exception as exc:
                 st.error(f"Stereo visual odometry failed: {exc}")
