@@ -311,7 +311,7 @@ compare raw and corrected exports against measured reference positions.
 
 ## Dashboard multi-camera 3D fusion
 
-Open **Camera calibration → Multi-camera PLY fusion**. Upload one ASCII XYZRGB
+Open **Camera calibration → Multi-camera PLY fusion**. Upload one XYZRGB
 PLY per camera (the filename stem is the camera ID) and a shared pose JSON:
 
 ```json
@@ -333,6 +333,6 @@ PLY per camera (the filename stem is the camera ID) and a shared pose JSON:
 The pose for each camera maps camera-local coordinates into the common world
 frame. Camera IDs must match PLY filename stems exactly. The dashboard previews
 a sampled fused point cloud and exports a fused PLY plus a JSON summary.
-Only ASCII PLY 1.0 with XYZRGB vertices is accepted. Extrinsics must already be
+ASCII and binary little-/big-endian PLY 1.0 are supported. XYZRGB vertex properties may be reordered or include extra scalar fields; list-valued vertex properties and non-vertex elements before vertices are rejected. Extrinsics must already be
 calibrated/verified; this workflow does not estimate camera poses or guarantee
 overlap registration.
