@@ -204,8 +204,11 @@ The included evaluator uses greedy class-aware IoU matching and counts ID change
 - [ ] Confirm the no-loop-closure path preserves the original trajectory.
 - [ ] Add a known synthetic closure residual and verify correction is distributed while the first pose remains anchored.
 - [ ] Evaluate only with independently verified revisit constraints; compare raw and corrected trajectory error against measured reference positions.
-- [ ] Test multiple loop closures, long trajectories, and outlier constraints before considering a robust loss or full SE(3) optimiser.
-- [ ] Confirm rotations are unchanged and document the translation-only limitation.
+- [ ] Test multiple independently verified relative-pose constraints and confirm both rotation and translation are adjusted where justified.
+- [ ] Compare translation-only and full SE(3) optimisation against the same measured reference trajectory.
+- [ ] Record initial/final solver cost, iteration count, convergence flag, and raw/corrected ATE/RPE.
+- [ ] Test outlier constraints and poor initial poses; preserve the raw trajectory for comparison.
+- [ ] Confirm the first pose remains anchored and that incorrect constraints can still deform the trajectory.
 
 
 ## 6.11 Multi-camera 3D fusion software validation
@@ -251,3 +254,30 @@ The included evaluator uses greedy class-aware IoU matching and counts ID change
 - [ ] Test low-texture, repeated-pattern, moving-object, lighting-change, and planar-scene footage.
 - [ ] Do not describe a candidate as a confirmed loop closure or metric pose estimate.
 
+
+
+## 6.14 Full SE(3) pose-graph software validation
+
+- [ ] Run the synthetic pose-graph tests in CI and verify a non-trivial loop residual reduces robust cost over multiple iterations.
+- [ ] Verify the first camera pose remains fixed and rotations as well as translations are optimised.
+- [ ] Evaluate against independently measured camera poses; report ATE and RPE before and after optimisation.
+- [ ] Test multiple closures, inconsistent closures, large initial drift, and longer paths; the dense solver is intended for short trajectories only.
+- [ ] Never treat a visually retrieved loop candidate as a metric constraint without independent geometric/metric verification.
+
+## 6.15 Automatic rigid point-cloud registration software validation
+
+- [ ] Start with two clouds of a known rigid object and a measured initial transform.
+- [ ] Run ICP and record correspondence fitness, RMSE, iteration count, and convergence flag.
+- [ ] Compare estimated rotation/translation against the known transform, including small overlap and outlier cases.
+- [ ] Repeat with different voxel sizes and correspondence thresholds; retain original poses if registration quality is poor.
+- [ ] Test low overlap, symmetric/repetitive geometry, and bad initial alignment; ICP may converge to a local minimum.
+- [ ] Compare automatic registration with independent camera extrinsics before using the result for multi-camera fusion.
+
+## 6.16 Stereo confidence and ground-truth trajectory benchmarks
+
+- [ ] Inspect the per-pixel stereo confidence map; verify invalid depth pixels receive zero confidence and all scores remain in [0, 1].
+- [ ] Compare confidence bins with independently measured depth errors and coverage on held-out scenes; do not call the heuristic a probability without calibration evidence.
+- [ ] Export estimated and ground-truth camera-to-world trajectories as equal-length JSON arrays of 4x4 matrices.
+- [ ] Run `python scripts/benchmark_trajectory.py --estimated estimated_poses.json --ground-truth ground_truth_poses.json --output trajectory_benchmark.json`.
+- [ ] Record ATE, relative translation RMSE, relative rotation RMSE, units, timestamp matching, and ground-truth source.
+- [ ] Ensure ground truth is independently surveyed/measured; no scale fitting is applied by this evaluator.

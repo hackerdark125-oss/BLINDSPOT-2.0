@@ -30,6 +30,22 @@ jobs:
         run: |
           python scripts/benchmark_fusion.py --cameras 2 --points-per-camera 1000 --repeats 1 --output /tmp/fusion_benchmark.json
           python -c "import json; report=json.load(open('/tmp/fusion_benchmark.json')); assert report['input_points'] == 2000 and report['output_points'] > 0"
+      - name: Smoke-test reconstruction and trajectory benchmark APIs
+        run: |
+          python - <<'PY'
+          import json
+          import numpy as np
+          poses = [np.eye(4).tolist(), np.eye(4).tolist()]
+          with open('/tmp/estimated_poses.json', 'w', encoding='utf-8') as stream:
+              json.dump(poses, stream)
+          with open('/tmp/ground_truth_poses.json', 'w', encoding='utf-8') as stream:
+              json.dump(poses, stream)
+          from blindspot.pose_graph_se3 import optimize_pose_graph_se3
+          from blindspot.registration import register_point_cloud_icp
+          assert callable(optimize_pose_graph_se3) and callable(register_point_cloud_icp)
+          PY
+          python scripts/benchmark_trajectory.py --estimated /tmp/estimated_poses.json --ground-truth /tmp/ground_truth_poses.json --output /tmp/trajectory_benchmark.json
+          python -c "import json; report=json.load(open('/tmp/trajectory_benchmark.json')); assert report['ate_rmse'] == 0 and report['rpe_translation_rmse'] == 0"
       - name: Smoke-test Streamlit startup
         run: |
           python -m streamlit run app.py --server.headless=true --server.port=8501 > /tmp/blindspot-streamlit.log 2>&1 &

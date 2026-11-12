@@ -41,3 +41,14 @@ A hosted Streamlit app cannot automatically access a webcam attached to a visito
 
 ## Resource sizing
 Video analysis, optical flow, and stereo depth estimation are CPU- and memory-intensive. Start with short clips, a 1-second sample interval, a 4x4 or 8x8 grid, and a modest frame limit. Increase settings only after observing resource use.
+
+
+## Benchmark and reconstruction utilities
+
+The dashboard remains the primary application entry point. Advanced reconstruction APIs are also available to Python callers:
+
+- `blindspot.pose_graph_se3.optimize_pose_graph_se3`: short-trajectory full SE(3) refinement with independently verified relative-pose constraints.
+- `blindspot.registration.register_point_cloud_icp`: local rigid alignment for overlapping point clouds; supply a reasonable initial transform and inspect fitness/RMSE.
+- `scripts/benchmark_trajectory.py`: evaluate exported estimated poses against an independent ground-truth JSON trajectory.
+
+These tools run inside the same Python environment/container. For large point clouds or long trajectories, size CPU and memory accordingly. Do not expose camera streams publicly; use trusted network paths and keep stream credentials outside source control.
