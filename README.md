@@ -16,6 +16,7 @@ BlindSpot 2.0 is an experimental computer-vision research prototype that highlig
 - Per-grid-cell time-since-motion activity maps
 - Repeated-frame diagnostic for potentially frozen feeds
 - Built-in HOG pedestrian detection with temporary centroid-based track IDs
+- Optional YOLO11 object detection with persistent ByteTrack IDs for people, cars, motorcycles, buses, trucks, and other COCO classes
 - Annotated sampled video frames and per-detection CSV export
 - Chessboard-based camera intrinsic and lens-distortion calibration
 - Paired chessboard stereo calibration for relative camera rotation and translation
@@ -64,6 +65,18 @@ The motion tracker computes dense optical flow between sampled frames with OpenC
 
 ## Release validation
 See [VALIDATION.md](VALIDATION.md) for the full automated and real-camera release checklist, including pedestrian detection, calibration, stereo depth, and benchmark evidence.
+
+## Modern AI object detection and tracking
+
+The **AI object detection & tracking** mode uses Ultralytics YOLO11 (nano or small model) for object detection and ByteTrack for persistent multi-object IDs across sampled video frames. Choose target classes, confidence threshold, inference image size, and frame stride. The dashboard renders annotated frames, summarizes detections by class, and exports timestamped bounding boxes, class labels, confidence scores, and track IDs to CSV.
+
+This feature is optional to keep the base app and CI lightweight. Install its dependencies with:
+
+```bash
+pip install -r requirements-ai.txt
+```
+
+The first run downloads the selected pretrained weights and requires internet access. The nano model is the recommended starting point for CPU testing; the small model may improve accuracy at higher compute cost. YOLO/ByteTrack results are not guaranteed: evaluate on representative footage, check ID switches and missed detections, and measure FPS on the target hardware. Track IDs can change after occlusion or scene cuts. This is a research prototype, not a safety-critical perception system.
 
 ## Deployment
 See [DEPLOYMENT.md](DEPLOYMENT.md) for Docker and Streamlit Community Cloud instructions. The repository includes a Dockerfile and a dark Streamlit theme.
