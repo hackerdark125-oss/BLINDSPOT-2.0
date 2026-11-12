@@ -103,6 +103,8 @@ Each sampled frame is divided into a configurable grid. Every cell receives a he
 - [x] Stereo rectification, disparity estimation, and depth-map export
 - [x] Input validation, unit tests, and CI
 - [x] Baseline pedestrian detection and short-term centroid tracking
+- [x] Optional YOLO11 detection across all 80 COCO classes with ByteTrack IDs
+- [x] Quantitative detection/tracking evaluator and per-frame processing benchmark tooling
 - [ ] Scene-change-aware activity baselines and robust camera-motion compensation
 - [ ] Multi-camera time synchronisation and validated 3D coverage reconstruction
 - [ ] Geometric multi-camera coverage estimation using camera pose / visual localisation
