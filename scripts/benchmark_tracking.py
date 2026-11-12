@@ -30,7 +30,12 @@ def main() -> None:
     parser.add_argument("--output", default="benchmark.json", help="Output JSON path")
     parser.add_argument("--iou", type=float, default=0.5, help="IoU matching threshold (default: 0.5)")
     args = parser.parse_args()
-    metrics = evaluate_tracking(read_rows(args.ground_truth), read_rows(args.predictions), args.iou)
+    prediction_rows = read_rows(args.predictions)
+    inference_times = [row["Inference (ms)"] for row in prediction_rows if row.get("Inference (ms)")]
+    metrics = evaluate_tracking(
+        read_rows(args.ground_truth), prediction_rows, args.iou,
+        inference_times_ms=inference_times or None,
+    )
     output = Path(args.output)
     output.write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(metrics, indent=2))
