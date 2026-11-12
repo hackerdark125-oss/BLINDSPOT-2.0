@@ -43,15 +43,12 @@ Do not publish a field-accuracy or safety claim without this evidence.
 - YOLO/ByteTrack masking only excludes detected tracked moving regions; missed
   and untracked objects can remain in the reconstruction.
 - Stereo visual odometry is local and can accumulate drift.
-- Pose-graph correction accepts manually supplied loop-closure constraints;
-  it does not discover loop closures and currently adjusts translations only.
-- Multi-camera point-cloud fusion requires externally verified camera-to-world
-  poses in a common coordinate frame and distance unit; the dashboard and CLI do
-  not estimate extrinsics or automatically register overlapping clouds.
+- The SE(3) pose-graph API jointly adjusts rotations and translations for short trajectories using supplied relative-pose constraints. It does not discover or metrically verify loop closures; incorrect constraints can worsen results.
+- Multi-camera point-cloud fusion still requires poses in a common coordinate frame and distance unit. A separate ICP API can estimate a local rigid alignment between overlapping clouds, but it is sensitive to initialisation, overlap, and scene geometry; it is not intrinsic calibration or a guarantee of correct extrinsics.
 - PLY import supports ASCII and binary little-/big-endian PLY 1.0 with scalar
   XYZRGB vertex properties; list-valued vertex properties are not supported.
-- Synthetic benchmarks measure software throughput on the runner, not real
-  camera accuracy or target-machine performance.
+- Synthetic benchmarks measure software behaviour/throughput on the runner, not real camera accuracy or target-machine performance. The trajectory evaluator and depth evaluator report only against the supplied independent ground truth/known distances.
+- Stereo per-pixel confidence combines left-right consistency and local texture as a relative heuristic; it is not a calibrated probability.
 - Visual loop-closure candidate retrieval uses ORB matching and RANSAC geometry,
   but it does not generate metric pose constraints or confirm a loop automatically.
   Full 6DoF pose-graph optimisation remains future work; current correction uses
@@ -73,3 +70,13 @@ Do not publish a field-accuracy or safety claim without this evidence.
 The project is a feature-rich research/prototype application. It is not
 field-validated or safety-certified. The real-camera validation checklist
 remains intentionally separate from automated CI.
+
+
+## New software validation surfaces
+
+- Full SE(3) pose-graph optimisation: synthetic unit tests plus the manual trajectory comparison in VALIDATION.md.
+- Rigid point-cloud ICP: synthetic transform-recovery tests plus known-object and measured-extrinsic comparisons.
+- Stereo confidence map: bounded relative scores and zero for invalid depth; requires held-out depth-error analysis before probabilistic interpretation.
+- Ground-truth trajectory evaluator: ATE and consecutive RPE using same-unit trajectories and first-pose alignment without scale fitting.
+
+These additions expand the software prototype. They do not change the requirement for real camera validation before field-use claims.

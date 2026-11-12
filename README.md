@@ -26,11 +26,12 @@ BlindSpot 2.0 is an experimental computer-vision research prototype that highlig
 - Planar two-camera ground-footprint and overlap estimation from calibrated stereo pose
 - Stereo visual odometry, depth-to-3D point-cloud reconstruction, and PLY export
 - Optional tracked-object masking during reconstruction to reduce moving-object contamination
-- ORB/RANSAC visual loop-closure candidate retrieval plus manual verified translation-only drift correction
-- Multi-camera XYZRGB point-cloud fusion using externally calibrated camera-to-world poses
+- ORB/RANSAC visual loop-closure candidate retrieval plus full SE(3) pose-graph optimisation using independently verified relative-pose constraints
+- Multi-camera XYZRGB point-cloud fusion using calibrated poses, plus a separate ICP rigid point-cloud registration API for overlapping clouds
 - ASCII and binary little-/big-endian PLY 1.0 import, plus a batch fusion CLI and JSON summaries
-- Stereo rectification, SGBM disparity estimation with bidirectional left-right consistency rejection, and depth-map CSV export
+- Stereo rectification, SGBM disparity estimation with bidirectional left-right consistency rejection, per-pixel relative depth confidence, and depth-map CSV export
 - CSV-based stereo-depth benchmark CLI for MAE, RMSE, relative error, and valid-pixel coverage
+- Ground-truth trajectory benchmark reporting ATE and relative translation/rotation errors
 - Calibration JSON export and undistortion preview
 - Weak-region prioritisation, multi-camera comparison, and CSV exports
 - Per-cell quality-score label template and human-agreement benchmark (MAE, RMSE, bias, Pearson/Spearman, score bins)
@@ -464,3 +465,14 @@ python scripts/benchmark_trajectory.py --estimated estimated_poses.json --ground
 The evaluator provides quantitative evidence only for the supplied reference
 path and timestamps. Ground truth must be independently surveyed or measured;
 synthetic tests do not establish real-world localisation accuracy.
+
+
+## Advanced reconstruction APIs
+
+- `blindspot.pose_graph_se3.optimize_pose_graph_se3` jointly optimises camera rotations and translations for short trajectories. The first pose is anchored; consecutive odometry edges are combined with independently verified relative-pose constraints. This is a dense research solver, not a large-scale SLAM backend.
+- `blindspot.registration.register_point_cloud_icp` estimates a rigid transform between overlapping XYZ/XYZRGB clouds using voxel sampling and trimmed ICP. It requires a reasonable initial alignment and should be judged by returned fitness and RMSE; it is not intrinsic calibration or a guarantee of correct extrinsics.
+- Stereo depth results expose `confidence_map`, a [0, 1] relative heuristic combining left-right consistency and local texture. It is not a calibrated probability.
+- `blindspot.camera_rig.estimate_camera_rig_poses` composes pairwise stereo extrinsics into a common rig frame and reports cycle residuals. It does not automatically capture calibration boards or synchronise cameras.
+- `scripts/benchmark_trajectory.py` compares estimated 4x4 camera-to-world matrices with independent ground truth and reports first-pose-aligned ATE plus consecutive relative pose errors. No scale fitting is applied.
+
+See [VALIDATION.md](VALIDATION.md) for the synthetic CI gate and separate real-camera evidence checklist, and [RELEASE.md](RELEASE.md) for release boundaries.
