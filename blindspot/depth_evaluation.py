@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from math import isfinite, sqrt
+
+import numpy as np
 from statistics import median
 from typing import Iterable, Mapping, Any
 
 
-def evaluate_depth_samples(samples: Iterable[Mapping[str, Any]]) -> dict[str, float | int]:
+def evaluate_depth_samples(samples: Iterable[Mapping[str, Any]]) -> dict[str, float | int | None]:
     """Evaluate per-target median depth and aggregate valid-pixel coverage.
 
     Each row requires known_distance, valid_pixels, and total_pixels. A missing
@@ -19,6 +21,8 @@ def evaluate_depth_samples(samples: Iterable[Mapping[str, Any]]) -> dict[str, fl
     total_pixels = 0
     sample_count = 0
     skipped_samples = 0
+    confidence_values: list[float] = []
+    confidence_errors: list[float] = []
 
     for index, sample in enumerate(samples, start=1):
         try:
@@ -52,6 +56,12 @@ def evaluate_depth_samples(samples: Iterable[Mapping[str, Any]]) -> dict[str, fl
         error = abs(measured - known)
         absolute_errors.append(error)
         relative_errors.append(error / known * 100.0)
+        if sample.get("mean_confidence") not in (None, ""):
+            confidence = float(sample["mean_confidence"])
+            if not isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+                raise ValueError(f"sample {index} mean_confidence must be in [0, 1]")
+            confidence_values.append(confidence)
+            confidence_errors.append(error)
         sample_count += 1
 
     if total_pixels == 0:
@@ -61,8 +71,19 @@ def evaluate_depth_samples(samples: Iterable[Mapping[str, Any]]) -> dict[str, fl
 
     mae = sum(absolute_errors) / sample_count
     rmse = sqrt(sum(error * error for error in absolute_errors) / sample_count)
+    confidence_correlation = None
+    if len(confidence_values) >= 2:
+        confidence_array = np.asarray(confidence_values, dtype=np.float64)
+        error_array = np.asarray(confidence_errors, dtype=np.float64)
+        if np.std(confidence_array) > 0 and np.std(error_array) > 0:
+            confidence_correlation = float(np.corrcoef(confidence_array, error_array)[0, 1])
+
     return {
         "samples_evaluated": sample_count,
+        "confidence_samples": len(confidence_values),
+        "mean_confidence": (sum(confidence_values) / len(confidence_values)
+                            if confidence_values else None),
+        "confidence_vs_absolute_error_pearson": confidence_correlation,
         "samples_without_valid_depth": skipped_samples,
         "mean_absolute_error": mae,
         "root_mean_squared_error": rmse,
