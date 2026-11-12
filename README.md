@@ -13,6 +13,8 @@ BlindSpot 2.0 is an experimental computer-vision research prototype that highlig
 - Brightness, contrast, sharpness, and edge-density metrics
 - Confidence and uncertainty trends over time
 - Dense optical-flow motion maps using Farneback
+- ORB/RANSAC global camera-motion compensation with conservative fallback when feature matches are weak
+- Histogram-based scene-change detection that resets motion history to avoid false activity spikes
 - Per-grid-cell time-since-motion activity maps
 - Repeated-frame diagnostic for potentially frozen feeds
 - Built-in HOG pedestrian detection with temporary centroid-based track IDs
@@ -59,7 +61,7 @@ For **Stereo depth preview**, upload both intrinsic JSON files, the stereo extri
 Select **Person detection & tracking** and upload a short video. The app uses OpenCV's built-in HOG + linear SVM pedestrian detector and a nearest-centroid tracker to associate detections across sampled frames. It displays annotated frames and exports timestamps, temporary track IDs, bounding boxes, and detector scores as CSV. This classical detector targets upright pedestrians; it is not a general object detector and may miss small, occluded, distant, or unusual poses. Track IDs are local to one video and can switch after occlusion or abrupt movement.
 
 ## Understanding motion activity age
-The motion tracker computes dense optical flow between sampled frames with OpenCV's Farneback algorithm. Each grid cell stores its average flow magnitude and elapsed time since motion last exceeded a configurable threshold.
+The motion tracker estimates global frame-to-frame camera motion from ORB feature matches and a RANSAC affine transform, aligns the previous frame, then measures residual dense optical flow with Farneback. If there are too few reliable matches, it falls back to unaligned optical flow. A grayscale histogram change detector resets motion history after likely scene cuts instead of reporting a misleading large motion spike. The dashboard report records whether compensation was applied and whether a scene change was detected. These are approximate image-space diagnostics, not visual odometry, camera pose, or proof of object motion. Each grid cell stores residual flow magnitude and elapsed time since it last exceeded a configurable threshold.
 
 **Activity age is not observation freshness.** A perfectly static scene can have a high activity age even while the camera is operating correctly. Camera movement, lighting changes, compression artefacts, and sampling interval can affect optical-flow values. Use these maps as diagnostics for human review, not as proof that an area is unseen or stale.
 
@@ -105,7 +107,7 @@ Each sampled frame is divided into a configurable grid. Every cell receives a he
 - [x] Baseline pedestrian detection and short-term centroid tracking
 - [x] Optional YOLO11 detection across all 80 COCO classes with ByteTrack IDs
 - [x] Quantitative detection/tracking evaluator and per-frame processing benchmark tooling
-- [ ] Scene-change-aware activity baselines and robust camera-motion compensation
+- [x] Scene-change resets and ORB/RANSAC global camera-motion compensation for motion diagnostics
 - [ ] Multi-camera time synchronisation and validated 3D coverage reconstruction
 - [ ] Geometric multi-camera coverage estimation using camera pose / visual localisation
 - [ ] Validated uncertainty model and benchmark dataset
