@@ -19,6 +19,7 @@ def test_se3_pose_graph_preserves_anchor_and_optimizes_rotation_and_translation(
     assert np.allclose(result.poses[0][0], np.eye(3))
     assert np.allclose(result.poses[0][1], np.zeros(3))
     assert result.final_cost < result.initial_cost
+    assert result.iterations > 1
     assert not np.allclose(result.poses[1][0], poses[1][0])
     assert result.poses[1][1][0] < poses[1][1][0]
 
