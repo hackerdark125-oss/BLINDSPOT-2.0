@@ -86,5 +86,40 @@ def test_calibrate_camera_with_synthetic_chessboard_views():
     assert result.image_height == 480
     assert np.asarray(result.camera_matrix).shape == (3, 3)
     assert np.isfinite(result.rms_reprojection_error)
+    assert np.isfinite(result.mean_view_reprojection_error_px)
+    assert np.isfinite(result.max_view_reprojection_error_px)
+    assert 0 <= result.mean_view_reprojection_error_px <= result.max_view_reprojection_error_px
+    assert result.accepted_views + result.rejected_views == len(_synthetic_chessboard_views())
 
 
+
+
+def test_calibration_json_round_trip_includes_view_error_metrics():
+    result = calibrate_camera(_synthetic_chessboard_views(), square_size=24.0)
+    from blindspot.calibration import load_calibration_json
+
+    loaded = load_calibration_json(result.to_json())
+    assert loaded.mean_view_reprojection_error_px == pytest.approx(
+        result.mean_view_reprojection_error_px
+    )
+    assert loaded.max_view_reprojection_error_px == pytest.approx(
+        result.max_view_reprojection_error_px
+    )
+
+
+def test_legacy_calibration_json_defaults_view_error_metrics():
+    data = {
+        "camera_matrix": [[100, 0, 50], [0, 100, 50], [0, 0, 1]],
+        "distortion_coefficients": [0, 0, 0, 0],
+        "rms_reprojection_error": 0.2,
+        "image_width": 100,
+        "image_height": 100,
+        "board_columns": 9,
+        "board_rows": 6,
+        "square_size": 1.0,
+        "accepted_views": 5,
+        "rejected_views": 0,
+    }
+    loaded = load_calibration_json(json.dumps(data))
+    assert loaded.mean_view_reprojection_error_px == 0.0
+    assert loaded.max_view_reprojection_error_px == 0.0
