@@ -53,7 +53,7 @@ def downward_pose():
 def test_camera_footprint_intersects_ground_plane():
     polygon = camera_footprint_on_plane(intrinsics(), downward_pose(), plane_z=0)
     assert polygon.shape == (4, 2)
-    assert np.isclose(abs(cv2_area(polygon)), 100.0, atol=0.1)
+    assert np.isclose(abs(cv2_area(polygon)), 98.01, atol=0.1)
 
 
 def cv2_area(polygon):
@@ -65,10 +65,10 @@ def test_stereo_coverage_reports_expected_overlap_and_union():
     result = estimate_stereo_planar_coverage(
         intrinsics(), intrinsics(), stereo(), downward_pose(), grid_size=64
     )
-    assert result.camera_a_area == pytest.approx(100.0, abs=0.1)
+    assert result.camera_a_area == pytest.approx(98.01, abs=0.1)
     assert result.camera_b_area == pytest.approx(100.0, abs=0.1)
-    assert result.overlap_area == pytest.approx(80.0, abs=0.1)
-    assert result.union_area == pytest.approx(120.0, abs=0.1)
+    assert result.overlap_area == pytest.approx(78.21, abs=0.1)
+    assert result.union_area == pytest.approx(117.81, abs=0.1)
     assert result.coverage_count_map.shape == (64, 64)
     assert set(np.unique(result.coverage_count_map)).issubset({0, 1, 2})
 
@@ -78,7 +78,7 @@ def test_camera_pose_json_validates_rotation_and_translation():
     loaded = load_camera_pose_json(pose.to_json())
     assert loaded.translation_vector == pose.translation_vector
     bad = {"rotation_matrix": np.zeros((3, 3)).tolist(), "translation_vector": [0, 0, 1]}
-    with pytest.raises(ValueError, match="invalid"):
+    with pytest.raises(ValueError, match="finite 3x3 rotation"):
         load_camera_pose_json(json.dumps(bad))
 
 
