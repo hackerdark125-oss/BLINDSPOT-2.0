@@ -43,6 +43,7 @@ Use a short clip containing several clearly visible, upright pedestrians.
 - [ ] Confirm bounding boxes are drawn around visible pedestrians.
 - [ ] Confirm a person moving slowly keeps the same track ID across adjacent sampled frames.
 - [ ] Confirm a newly entering person receives a new ID.
+- [ ] Process a second, unrelated clip and confirm track IDs start fresh rather than carrying over from the previous clip.
 - [ ] Confirm the CSV contains timestamps, IDs, bounding boxes, and detector scores.
 - [ ] Repeat with different distances, lighting, crowd density, and partial occlusion.
 - [ ] Record false positives and missed detections. HOG is a classical upright-person detector, not a modern general-purpose detector; poor performance in difficult scenes is an expected limitation.
