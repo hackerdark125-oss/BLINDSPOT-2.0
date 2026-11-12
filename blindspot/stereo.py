@@ -165,6 +165,8 @@ class StereoDepthResult:
     depth_map: np.ndarray
     valid_mask: np.ndarray
     translation_unit: str
+    rectified_camera_matrix: np.ndarray | None = None
+    rectification_rotation: np.ndarray | None = None
 
 
 def load_stereo_calibration_json(content: str) -> StereoCalibration:
@@ -271,5 +273,6 @@ def rectify_and_compute_depth(
     depth[~valid] = np.nan
 
     return StereoDepthResult(
-        rectified_a, rectified_b, disparity, depth, valid, stereo.translation_unit
+        rectified_a, rectified_b, disparity, depth, valid, stereo.translation_unit,
+        projection_a[:3, :3], rect_a,
     )
