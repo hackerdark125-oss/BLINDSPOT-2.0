@@ -35,6 +35,9 @@ Use at least two short videos with different lighting and scene content.
 - [ ] Confirm capture ends at the configured duration.
 - [ ] Cover and uncover the lens to check that the repeated-frame warning is only a diagnostic.
 - [ ] Test a network stream only on a trusted network; do not commit credentials or RTSP URLs.
+- [ ] Run AI live webcam / RTSP mode and confirm capture is bounded by duration and maximum samples.
+- [ ] Confirm live AI results include timestamps, boxes, class IDs, track IDs, and per-frame processing times.
+- [ ] Confirm a second live capture starts a fresh ByteTrack identity session.
 
 ## 4. Pedestrian detection and tracking
 
