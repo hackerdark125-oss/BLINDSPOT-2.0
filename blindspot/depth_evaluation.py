@@ -23,10 +23,14 @@ def evaluate_depth_samples(samples: Iterable[Mapping[str, Any]]) -> dict[str, fl
     for index, sample in enumerate(samples, start=1):
         try:
             known = float(sample["known_distance"])
-            valid = int(sample["valid_pixels"])
-            total = int(sample["total_pixels"])
+            valid_raw = float(sample["valid_pixels"])
+            total_raw = float(sample["total_pixels"])
+            if not isfinite(valid_raw) or not isfinite(total_raw) or not valid_raw.is_integer() or not total_raw.is_integer():
+                raise ValueError("pixel counts must be finite integers")
+            valid = int(valid_raw)
+            total = int(total_raw)
         except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError(f"sample {index} is missing valid numeric fields") from exc
+            raise ValueError(f"sample {index} is missing valid numeric fields or has non-integer pixel counts") from exc
         if not isfinite(known) or known <= 0:
             raise ValueError(f"sample {index} known_distance must be positive and finite")
         if valid < 0 or total <= 0 or valid > total:
