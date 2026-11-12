@@ -88,7 +88,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for Docker and Streamlit Community Cloud inst
 ```bat
 python -m pytest -q
 ```
-GitHub Actions runs the same test command on pushes and pull requests.
+GitHub Actions runs compilation and the test suite on Ubuntu and Windows for pushes and pull requests; the Ubuntu job also builds the Docker image.
 
 ## How the image-quality score works
 Each sampled frame is divided into a configurable grid. Every cell receives a heuristic score from exposure balance, local contrast, Laplacian sharpness, and Canny edge density. Scores range from 0 to 100; low-scoring cells are prioritised for human review. This is not a trained AI model or calibrated probability.
