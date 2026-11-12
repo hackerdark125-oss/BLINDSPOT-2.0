@@ -30,6 +30,7 @@ from blindspot.uncertainty import (
     evaluate_calibration, fit_isotonic_calibrator, apply_isotonic_calibrator,
 )
 from blindspot.pose_graph import optimize_pose_graph_translations
+from blindspot.loop_closure import detect_loop_closure_candidates
 from blindspot.multicam import fuse_multicamera_point_clouds
 from blindspot.ply import read_ascii_ply
 
@@ -923,7 +924,7 @@ else:
                 duration_b = capture_b.get(cv2.CAP_PROP_FRAME_COUNT) / fps_b
                 if abs(duration_a - duration_b) > max(vo_interval, 0.5):
                     st.warning("Video durations differ. Sampling will stop when either stream ends.")
-                local_clouds, world_poses, trajectory = [], [], []
+                local_clouds, world_poses, trajectory, loop_keyframes = [], [], [], []
                 previous_frame = previous_depth = previous_valid_mask = None
                 world_rotation, world_translation = np.eye(3), np.zeros(3)
                 processed, skipped, masked_detections = 0, 0, 0
@@ -978,6 +979,7 @@ else:
                                 skipped += 1
                                 continue
                             local_clouds.append(local_cloud)
+                            loop_keyframes.append(depth_result.rectified_a.copy())
                             world_poses.append((world_rotation.copy(), world_translation.copy()))
                             trajectory.append({
                                 "sample_index": sample_index, "time_seconds": timestamp,
@@ -1007,6 +1009,7 @@ else:
                                 skipped += 1
                                 continue
                             local_clouds.append(local_cloud)
+                            loop_keyframes.append(depth_result.rectified_a.copy())
                             world_poses.append((candidate_rotation.copy(), candidate_translation.copy()))
                             world_rotation, world_translation = candidate_rotation, candidate_translation
                             trajectory.append({
@@ -1050,6 +1053,44 @@ else:
                         pd.DataFrame(trajectory).to_csv(index=False).encode("utf-8"),
                         file_name="blindspot_camera_trajectory.csv", mime="text/csv",
                     )
+                    if len(loop_keyframes) >= 3:
+                        with st.expander("Loop-closure candidate suggestions (visual retrieval)"):
+                            st.caption(
+                                "BLINDSPOT compares non-adjacent sampled views using ORB feature "
+                                "matching and RANSAC geometric verification. These are candidate "
+                                "revisits only—not verified metric poses. Review them independently "
+                                "before entering any translation constraint below."
+                            )
+                            try:
+                                candidates = detect_loop_closure_candidates(
+                                    loop_keyframes,
+                                    min_frame_gap=max(2, min(5, len(loop_keyframes) // 3)),
+                                    min_matches=10,
+                                    min_inliers=8,
+                                    min_inlier_ratio=0.35,
+                                )
+                                if candidates:
+                                    candidate_rows = [{
+                                        "Earlier trajectory row": item.earlier_index,
+                                        "Later trajectory row": item.later_index,
+                                        "Feature matches": item.match_count,
+                                        "Geometric inliers": item.inlier_count,
+                                        "Inlier ratio": round(item.inlier_ratio, 3),
+                                        "Verification": item.verification_model,
+                                        "Retrieval score": round(item.score, 3),
+                                    } for item in candidates]
+                                    st.dataframe(
+                                        pd.DataFrame(candidate_rows),
+                                        use_container_width=True,
+                                        hide_index=True,
+                                    )
+                                else:
+                                    st.info(
+                                        "No strong revisit candidates found in these sampled frames. "
+                                        "This does not prove that the route contains no loop closure."
+                                    )
+                            except Exception as loop_exc:
+                                st.warning(f"Loop-closure candidate search unavailable: {loop_exc}")
                     if len(trajectory) >= 2:
                         with st.expander("Optional · correct drift with a verified loop closure"):
                             st.warning(
