@@ -48,6 +48,7 @@ class MotionFreshnessTracker:
         self._previous: np.ndarray | None = None
         self._last_activity: np.ndarray | None = None
         self._start_time: float | None = None
+        self._last_timestamp: float | None = None
 
     def _gray(self, frame: np.ndarray) -> np.ndarray:
         if not isinstance(frame, np.ndarray) or frame.size == 0:
@@ -67,12 +68,13 @@ class MotionFreshnessTracker:
         """Update tracker and return per-cell motion magnitude and activity age."""
         if not np.isfinite(timestamp_seconds) or timestamp_seconds < 0:
             raise ValueError("timestamp_seconds must be a non-negative finite number")
-        if self._start_time is not None and timestamp_seconds < self._start_time:
+        if self._last_timestamp is not None and timestamp_seconds < self._last_timestamp:
             raise ValueError("timestamps must be non-decreasing")
         current = self._gray(frame)
         if self._previous is None:
             self._previous = current
             self._start_time = float(timestamp_seconds)
+            self._last_timestamp = float(timestamp_seconds)
             self._last_activity = np.full(
                 (self.grid_size, self.grid_size), timestamp_seconds, dtype=np.float32
             )
@@ -97,6 +99,7 @@ class MotionFreshnessTracker:
         self._last_activity[active] = timestamp_seconds
         ages = np.maximum(0.0, timestamp_seconds - self._last_activity).astype(np.float32)
         self._previous = current
+        self._last_timestamp = float(timestamp_seconds)
         return MotionSnapshot(
             cell_magnitudes, ages, float(np.mean(cell_magnitudes))
         )
