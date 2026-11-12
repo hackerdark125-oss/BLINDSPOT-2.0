@@ -36,7 +36,9 @@ Do not publish a field-accuracy or safety claim without this evidence.
 - Image-quality confidence scores are heuristic unless separately calibrated
   against independent held-out labels.
 - Stereo depth depends on calibration, synchronization, texture, and scene
-  conditions.
+  conditions. The matcher applies bidirectional left-right disparity consistency
+  to reject many occlusion and mismatch pixels; this can reduce valid coverage and
+  does not replace measured depth validation.
 - YOLO/ByteTrack masking only excludes detected tracked moving regions; missed
   and untracked objects can remain in the reconstruction.
 - Stereo visual odometry is local and can accumulate drift.

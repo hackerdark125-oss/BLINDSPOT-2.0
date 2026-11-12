@@ -141,6 +141,9 @@ The included evaluator uses greedy class-aware IoU matching and counts ID change
 - [ ] Confirm point count, coordinate units, and colour alignment in a point-cloud viewer.
 - [ ] Compare reconstructed points against measured targets at multiple distances and positions.
 - [ ] Check that invalid/zero depth pixels are omitted and that max-depth filtering behaves as configured.
+
+- [ ] Confirm the stereo depth valid mask applies left-right disparity consistency; inspect invalid pixels around occlusions and depth discontinuities.
+- [ ] Compare valid-pixel coverage and measured depth error with the consistency filter enabled at its default threshold; do not maximise coverage by weakening consistency without checking error.
 - [ ] Run the two-frame visual-motion estimator on textured footage with known camera movement; record inlier count and translation direction.
 - [ ] Do not interpret monocular translation direction as metric displacement or absolute camera position.
 
