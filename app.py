@@ -14,6 +14,7 @@ from blindspot.live import capture_live_source
 from blindspot.calibration import calibrate_camera, load_calibration_json, undistort_frame
 from blindspot.people import process_video as process_people_video
 from blindspot.ai_detection import YOLODetector, process_video as process_ai_video
+from blindspot.synchronization import synchronize_timestamps
 from blindspot.stereo import (
     calibrate_stereo_cameras, load_stereo_calibration_json,
     rectify_and_compute_depth,
@@ -150,8 +151,16 @@ if mode == "Recorded videos":
         if len(uploads) > 4:
             st.warning("Only the first four videos will be analysed.")
         camera_summaries = []
+        camera_streams = {}
+        camera_offsets = {}
         for i, upload in enumerate(uploads[:4]):
-            st.subheader(f"Camera {i+1} · {upload.name}")
+            camera_label = f"Camera {i+1} · {upload.name}"
+            st.subheader(camera_label)
+            camera_offsets[camera_label] = st.number_input(
+                "Timeline offset (seconds; added to sample timestamps)",
+                min_value=-3600.0, max_value=3600.0, value=0.0, step=0.1,
+                key=f"camera_time_offset_{i}",
+            )
             suffix = Path(upload.name).suffix or ".mp4"
             try:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -163,6 +172,7 @@ if mode == "Recorded videos":
                 finally:
                     Path(temp_path).unlink(missing_ok=True)
                 summary = render_results(upload.name, results)
+                camera_streams[camera_label] = [item.timestamp_seconds for item in results]
                 camera_summaries.append({
                     "Camera": upload.name,
                     "Mean confidence": summary["Confidence"].mean(),
@@ -184,6 +194,45 @@ if mode == "Recorded videos":
                 file_name="blindspot_camera_comparison.csv",
                 mime="text/csv", key="download_comparison",
             )
+            if len(camera_streams) >= 2:
+                st.divider()
+                st.subheader("Multi-camera timestamp alignment")
+                st.caption(
+                    "Set each camera's timeline offset if recording start times differ. "
+                    "This aligns sampled timestamps only; it does not prove hardware synchronization "
+                    "or that frames depict the exact same instant."
+                )
+                tolerance = st.slider(
+                    "Maximum allowed inter-camera skew (seconds)",
+                    min_value=0.01, max_value=1.0, value=0.25, step=0.01,
+                    key="camera_sync_tolerance",
+                )
+                aligned = synchronize_timestamps(
+                    camera_streams, camera_offsets, tolerance_seconds=float(tolerance)
+                )
+                if aligned:
+                    aligned_rows = []
+                    for match in aligned:
+                        row = {"Reference time (s)": match["reference_time_seconds"]}
+                        for camera_name, sample in match["samples"].items():
+                            row[f"{camera_name} · sample"] = sample["sample_index"]
+                            row[f"{camera_name} · source time (s)"] = sample["source_time_seconds"]
+                            row[f"{camera_name} · skew (s)"] = sample["skew_seconds"]
+                        aligned_rows.append(row)
+                    aligned_df = pd.DataFrame(aligned_rows)
+                    st.metric("Aligned multi-camera sample groups", len(aligned_df))
+                    st.dataframe(aligned_df, use_container_width=True, hide_index=True)
+                    st.download_button(
+                        "Download synchronized sample index (CSV)",
+                        aligned_df.to_csv(index=False).encode("utf-8"),
+                        file_name="blindspot_synchronized_camera_samples.csv",
+                        mime="text/csv", key="download_sync_index",
+                    )
+                else:
+                    st.warning(
+                        "No sample groups fell within the selected skew tolerance. "
+                        "Adjust the per-camera offsets or increase the tolerance."
+                    )
             st.success(f"Analysis completed for {len(camera_summaries)} camera feed(s).")
     else:
         st.write("Upload one or more short recordings to begin.")
