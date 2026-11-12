@@ -25,6 +25,7 @@ Use at least two short videos with different lighting and scene content.
 
 - [ ] Upload MP4/AVI/MOV footage and confirm sampling completes.
 - [ ] Confirm confidence, uncertainty, motion plots, and heatmaps render.
+- [ ] Confirm frame reports include camera-motion compensation and scene-change diagnostic flags.
 - [ ] Download the CSV and check timestamps and numeric columns.
 - [ ] Upload a second camera clip and confirm camera comparison is shown.
 - [ ] Try an invalid or corrupt file and confirm the app reports an error without crashing.
@@ -34,6 +35,8 @@ Use at least two short videos with different lighting and scene content.
 - [ ] Test the local webcam at index 0 (try 1 if multiple cameras are attached).
 - [ ] Confirm capture ends at the configured duration.
 - [ ] Cover and uncover the lens to check that the repeated-frame warning is only a diagnostic.
+- [ ] Pan the camera across a textured static scene and check that global motion compensation reduces broad false motion where ORB matches are reliable.
+- [ ] Cut between visually different scenes and confirm the motion history resets rather than showing a large cut-induced flow spike.
 - [ ] Test a network stream only on a trusted network; do not commit credentials or RTSP URLs.
 
 ## 4. Pedestrian detection and tracking
@@ -92,5 +95,7 @@ The repository can be considered **software-complete for its documented prototyp
 - [ ] Record precision, recall, F1, mean matched IoU, false positives, false negatives, and ID switches.
 - [ ] Measure inference latency separately on the target machine and record the hardware, model size, image size, and frame stride.
 - [ ] Repeat in daylight, low light, crowded scenes, and partial occlusion; keep each condition's result separate.
+
+The motion compensation and scene-change heuristics are approximate; feature-poor scenes fall back to raw optical flow, and false scene-change detections remain possible. They are not visual odometry or camera-pose estimates.
 
 The included evaluator uses greedy class-aware IoU matching and counts ID changes only on consecutive evaluated samples. It is not a replacement for a full MOT benchmark. Do not claim field accuracy without labelled footage and repeatable measurements.
