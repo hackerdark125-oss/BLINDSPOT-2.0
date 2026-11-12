@@ -53,6 +53,16 @@ class YOLODetector:
         self.weights = weights
         self.model = model
 
+    def reset_tracker(self) -> None:
+        """Reset ByteTrack state before processing a separate video source."""
+        predictor = getattr(self.model, "predictor", None)
+        if predictor is None:
+            return
+        for tracker in getattr(predictor, "trackers", []) or []:
+            reset = getattr(tracker, "reset", None)
+            if callable(reset):
+                reset()
+
     def track_frame(
         self,
         frame: np.ndarray,
@@ -145,6 +155,7 @@ def process_video(
     if not video_path.exists():
         raise ValueError(f"Video does not exist: {path}")
     detector = detector or YOLODetector(weights)
+    detector.reset_tracker()
     capture = cv2.VideoCapture(str(video_path))
     if not capture.isOpened():
         capture.release()
