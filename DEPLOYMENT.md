@@ -23,7 +23,7 @@ docker run --rm -p 8501:8501 blindspot-2
 
 Open http://localhost:8501.
 
-For a network camera, the RTSP/HTTP stream must be reachable from inside the container. Local webcam device passthrough requires platform-specific device access and is not enabled by the default container command.
+For a network camera, the RTSP/HTTP stream must be reachable from inside the container. Local webcam device passthrough requires platform-specific device access and is not enabled by the default container command. The AI live mode also requires the optional dependencies in `requirements-ai.txt` and a first-run download of the selected YOLO weights.
 
 ## Deploy on Streamlit Community Cloud
 1. Push the repository to GitHub.
@@ -37,7 +37,7 @@ A hosted Streamlit app cannot automatically access a webcam attached to a visito
 - Never commit RTSP credentials, API keys, or private stream URLs.
 - Keep secrets in the hosting platform's secret manager or environment variables.
 - Restrict access to private camera networks; do not expose camera ports to the public internet.
-- The application currently accepts a stream URL in the UI; use only trusted streams.
+- The application accepts stream URLs in the UI; use only trusted streams. Avoid URLs with embedded credentials in screenshots, logs, or shared reports.
 
 ## Resource sizing
 Video analysis, optical flow, and stereo depth estimation are CPU- and memory-intensive. Start with short clips, a 1-second sample interval, a 4x4 or 8x8 grid, and a modest frame limit. Increase settings only after observing resource use.
