@@ -129,7 +129,7 @@ MIT
 
 ## Quantitative detection and tracking benchmark
 
-The benchmark utility compares YOLO/ByteTrack predictions with manually labelled ground truth. It reports precision, recall, F1, false positives/negatives, mean matched IoU, consecutive-frame ID switches, and optional latency-derived FPS. Metrics are meaningful only when labels are accurate and both CSV files use the same sampled frame indices.
+The benchmark utility compares YOLO/ByteTrack predictions with manually labelled ground truth. It reports precision, recall, F1, false positives/negatives, mean matched IoU, consecutive-sampled-frame ID switches, and inference-only throughput estimated from measured per-frame inference latency. The app's AI tracking CSV includes original frame indices and inference latency, and can be used directly as the predictions file. Metrics are meaningful only when labels are accurate and both CSV files use the same sampled frame indices.
 
 Create ground-truth and prediction CSV files with this header:
 
