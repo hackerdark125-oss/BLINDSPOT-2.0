@@ -15,6 +15,8 @@ Build the image from the repository root:
 docker build -t blindspot-2 .
 ```
 
+The Docker image installs only `requirements-runtime.txt`; `requirements.txt` additionally includes pytest for development and CI.
+
 Run the dashboard (bind to localhost by default so it is not exposed to the LAN):
 
 ```bash
@@ -75,3 +77,17 @@ For each deployment, record:
 - Benchmark input identifiers and output reports.
 
 Do not include RTSP passwords, access tokens, private camera URLs, or personal footage in public logs or release artifacts.
+
+
+## Docker Compose
+
+A local Compose configuration is provided for repeatable startup:
+
+```bash
+docker compose up --build -d
+docker compose ps
+docker compose logs -f
+docker compose down
+```
+
+The default Compose port is bound to localhost only. Change the host binding deliberately if remote access is required, and put authentication/firewall controls in front of any remote deployment.
