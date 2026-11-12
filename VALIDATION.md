@@ -83,7 +83,18 @@ Use a short clip containing several clearly visible, upright pedestrians.
 - [ ] Record sample count, MAE, RMSE, bias, correlations, and score-bin summaries for each condition.
 - [ ] Do not call the score calibrated or validated until it has been evaluated on a separate held-out labelled set.
 
-Timestamp alignment uses manual offsets and nearest-neighbour matching. It is not hardware time synchronization and does not establish geometric overlap or 3D coverage.
+Timestamp alignment uses manual offsets and nearest-neighbour matching. It is not hardware time synchronization and does not establish geometric overlap.
+
+## 6.3 Planar two-camera coverage preview
+
+- [ ] Calibrate both cameras individually and run paired stereo calibration.
+- [ ] Provide camera A's camera-to-world rotation and translation in the same coordinate frame and distance unit as the stereo baseline.
+- [ ] Confirm world Z is vertical and the selected horizontal plane is below both cameras.
+- [ ] Generate the planar footprint/overlap map and export its JSON and CSV outputs.
+- [ ] Compare polygon boundaries and overlap area with a measured, unobstructed test layout.
+- [ ] Repeat with changed camera spacing and orientation; record the pose source and all units.
+
+The planar estimator intersects image-corner rays with one known plane. It does not model occlusion, arbitrary 3D geometry, or semantic visibility; it is not a full 3D coverage reconstruction.
 
 ## 7. Release evidence
 
