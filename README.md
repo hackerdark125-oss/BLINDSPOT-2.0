@@ -429,3 +429,18 @@ The relative score combines left-right disparity agreement with local image
 texture; invalid depth pixels receive zero confidence. Low-texture and weakly
 matched regions are therefore down-weighted. This is a heuristic quality score,
 not a calibrated probability or a substitute for known-distance depth tests.
+
+
+### Multi-camera extrinsic graph composition
+
+The `blindspot.camera_rig.estimate_camera_rig_poses` API composes pairwise
+stereo extrinsics into a common camera-to-world rig frame. Provide a connected
+graph of calibrated pairwise transforms using `X_j = R_ji X_i + t_ji`; the
+selected anchor camera becomes the world origin. The result includes cycle
+rotation and translation residual diagnostics for redundant pairwise edges.
+
+This automates coordinate-frame composition after pairwise calibration; it
+does not automatically capture/detect calibration targets, synchronise
+cameras, or globally refine noisy pairwise estimates. All translations must
+share one unit, and disconnected or inconsistent calibration graphs must be
+resolved before using the rig for fusion.
