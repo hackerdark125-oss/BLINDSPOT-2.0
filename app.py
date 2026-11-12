@@ -12,7 +12,10 @@ import streamlit as st
 from blindspot.engine import sample_video, prioritise_cells
 from blindspot.live import capture_live_source
 from blindspot.calibration import calibrate_camera, load_calibration_json, undistort_frame
-from blindspot.stereo import calibrate_stereo_cameras
+from blindspot.stereo import (
+    calibrate_stereo_cameras, load_stereo_calibration_json,
+    rectify_and_compute_depth,
+)
 
 st.set_page_config(page_title="BlindSpot 2.0", page_icon="◉", layout="wide")
 st.title("◉ BLINDSPOT 2.0")
@@ -187,7 +190,7 @@ else:
     st.subheader("Camera calibration")
     calibration_mode = st.radio(
         "Calibration workflow",
-        ["Single-camera intrinsics", "Two-camera stereo extrinsics"],
+        ["Single-camera intrinsics", "Two-camera stereo extrinsics", "Stereo depth preview"],
         horizontal=True,
     )
     if calibration_mode == "Single-camera intrinsics":
@@ -262,7 +265,7 @@ else:
                     st.info("The selected preview must match the calibration image resolution.")
             except Exception as exc:
                 st.error(f"Calibration failed: {exc}")
-    else:
+    elif calibration_mode == "Two-camera stereo extrinsics":
         st.write(
             "Upload synchronized chessboard image pairs from two fixed cameras. "
             "Each A image and B image at the same index must show the same board pose."
@@ -340,6 +343,109 @@ else:
                     )
                 except Exception as exc:
                     st.error(f"Stereo calibration failed: {exc}")
+
+
+    else:
+        st.write(
+            "Upload calibrated camera intrinsics, stereo extrinsics, and a synchronized "
+            "image pair. The app rectifies the pair and estimates disparity/depth with SGBM."
+        )
+        st.warning(
+            "Use the same fixed camera arrangement and resolution used during calibration. "
+            "Depth units follow the square-size unit used for calibration. Textureless or "
+            "occluded regions may have invalid depth."
+        )
+        c1, c2 = st.columns(2)
+        with c1:
+            depth_intrinsics_a = st.file_uploader(
+                "Camera A intrinsics JSON", type=["json"], key="depth_intrinsics_a"
+            )
+            depth_image_a = st.file_uploader(
+                "Camera A image", type=["jpg", "jpeg", "png", "bmp"], key="depth_image_a"
+            )
+        with c2:
+            depth_intrinsics_b = st.file_uploader(
+                "Camera B intrinsics JSON", type=["json"], key="depth_intrinsics_b"
+            )
+            depth_image_b = st.file_uploader(
+                "Camera B image", type=["jpg", "jpeg", "png", "bmp"], key="depth_image_b"
+            )
+        stereo_json = st.file_uploader(
+            "Stereo extrinsics JSON", type=["json"], key="depth_stereo_json"
+        )
+        d1, d2 = st.columns(2)
+        with d1:
+            num_disparities = st.select_slider(
+                "Disparity search range", options=list(range(16, 257, 16)), value=128
+            )
+        with d2:
+            block_size = st.select_slider(
+                "Matching block size", options=[3, 5, 7, 9, 11, 13, 15], value=5
+            )
+        ready_depth = bool(
+            depth_intrinsics_a and depth_intrinsics_b and depth_image_a
+            and depth_image_b and stereo_json
+        )
+        if st.button("Generate stereo depth map", type="primary", disabled=not ready_depth):
+            try:
+                calibration_a = load_calibration_json(depth_intrinsics_a.getvalue().decode("utf-8"))
+                calibration_b = load_calibration_json(depth_intrinsics_b.getvalue().decode("utf-8"))
+                stereo = load_stereo_calibration_json(stereo_json.getvalue().decode("utf-8"))
+                raw_a = np.frombuffer(depth_image_a.getvalue(), dtype=np.uint8)
+                raw_b = np.frombuffer(depth_image_b.getvalue(), dtype=np.uint8)
+                image_a = cv2.imdecode(raw_a, cv2.IMREAD_COLOR)
+                image_b = cv2.imdecode(raw_b, cv2.IMREAD_COLOR)
+                with st.spinner("Rectifying camera pair and estimating depth..."):
+                    result = rectify_and_compute_depth(
+                        image_a, image_b, calibration_a, calibration_b, stereo,
+                        num_disparities=int(num_disparities), block_size=int(block_size),
+                    )
+                valid_count = int(result.valid_mask.sum())
+                total_count = int(result.valid_mask.size)
+                valid_depth = result.depth_map[result.valid_mask]
+                if valid_count == 0:
+                    st.warning(
+                        "No valid depth pixels were estimated. Check camera order, "
+                        "calibration, image synchronization, and scene texture."
+                    )
+                else:
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Valid depth pixels", f"{100*valid_count/total_count:.1f}%")
+                    m2.metric("Median depth", f"{np.median(valid_depth):.2f} {result.translation_unit}")
+                    m3.metric("Depth samples", f"{valid_count:,}")
+                    left, right = st.columns(2)
+                    with left:
+                        st.image(cv2.cvtColor(result.rectified_a, cv2.COLOR_BGR2RGB), caption="Rectified camera A")
+                    with right:
+                        st.image(cv2.cvtColor(result.rectified_b, cv2.COLOR_BGR2RGB), caption="Rectified camera B")
+                    disparity_figure = px.imshow(
+                        np.where(result.valid_mask, result.disparity_pixels, np.nan),
+                        color_continuous_scale="Turbo",
+                        labels={"x": "Pixel", "y": "Pixel row", "color": "Disparity (px)"},
+                        title="Stereo disparity map",
+                    )
+                    disparity_figure.update_layout(height=420)
+                    st.plotly_chart(disparity_figure, use_container_width=True)
+                    upper_depth = float(np.nanpercentile(valid_depth, 95))
+                    depth_figure = px.imshow(
+                        np.where(result.valid_mask, result.depth_map, np.nan),
+                        zmin=float(np.nanpercentile(valid_depth, 5)),
+                        zmax=max(upper_depth, float(np.nanpercentile(valid_depth, 5)) + 1e-6),
+                        color_continuous_scale="Viridis",
+                        labels={"x": "Pixel", "y": "Pixel row", "color": f"Depth ({result.translation_unit})"},
+                        title="Estimated depth map",
+                    )
+                    depth_figure.update_layout(height=420)
+                    st.plotly_chart(depth_figure, use_container_width=True)
+                    st.download_button(
+                        "Download depth map (CSV)",
+                        pd.DataFrame(result.depth_map).to_csv(index=False).encode("utf-8"),
+                        file_name="blindspot_stereo_depth.csv",
+                        mime="text/csv",
+                    )
+            except Exception as exc:
+                st.error(f"Stereo depth estimation failed: {exc}")
+
 
 
 st.divider()
