@@ -54,3 +54,14 @@ def test_id_switch_counts_consecutive_sampled_frames_with_stride():
     gt = [row(0, 7), row(3, 7)]
     pred = [row(0, 3), row(3, 4)]
     assert evaluate_tracking(gt, pred)["id_switches"] == 1
+
+
+def test_benchmark_latency_is_counted_once_per_sampled_frame():
+    from scripts.benchmark_tracking import extract_frame_inference_times
+
+    rows = [
+        {"frame_index": "0", "Inference (ms)": "20.0"},
+        {"frame_index": "0", "Inference (ms)": "20.0"},
+        {"frame_index": "3", "Inference (ms)": "40.0"},
+    ]
+    assert extract_frame_inference_times(rows) == [20.0, 40.0]
