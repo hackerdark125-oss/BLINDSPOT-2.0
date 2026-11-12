@@ -26,6 +26,10 @@ jobs:
         run: python -m compileall -q app.py blindspot scripts tests
       - name: Run unit tests
         run: python -m pytest -q
+      - name: Smoke-test multi-camera fusion benchmark
+        run: |
+          python scripts/benchmark_fusion.py --cameras 2 --points-per-camera 1000 --repeats 1 --output /tmp/fusion_benchmark.json
+          python -c "import json; report=json.load(open('/tmp/fusion_benchmark.json')); assert report['input_points'] == 2000 and report['output_points'] > 0"
       - name: Smoke-test Streamlit startup
         run: |
           python -m streamlit run app.py --server.headless=true --server.port=8501 > /tmp/blindspot-streamlit.log 2>&1 &
