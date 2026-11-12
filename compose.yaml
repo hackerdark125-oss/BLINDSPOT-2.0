@@ -1,0 +1,10 @@
+services:
+  blindspot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: blindspot-2:local
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8501:8501"
