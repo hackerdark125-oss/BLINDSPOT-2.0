@@ -112,3 +112,18 @@ def test_exclude_detection_regions_validates_inputs():
         exclude_detection_regions(np.ones((4, 4), dtype=bool), [(1, 1, 0, 2)])
     with pytest.raises(ValueError, match="padding"):
         exclude_detection_regions(np.ones((4, 4), dtype=bool), [], padding=-1)
+
+
+
+def test_stereo_visual_odometry_validates_previous_feature_mask():
+    frame = np.zeros((20, 20), dtype=np.uint8)
+    with pytest.raises(ValueError, match="previous_valid_mask"):
+        estimate_stereo_visual_motion(
+            frame, frame, np.ones((20, 20)), np.eye(3),
+            previous_valid_mask=np.ones((10, 10), dtype=bool),
+        )
+    with pytest.raises(ValueError, match="previous_valid_mask"):
+        estimate_stereo_visual_motion(
+            frame, frame, np.ones((20, 20)), np.eye(3),
+            previous_valid_mask=np.ones((20, 20), dtype=np.uint8),
+        )
