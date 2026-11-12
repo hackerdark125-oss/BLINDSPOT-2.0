@@ -23,6 +23,15 @@ def read_rows(path: str):
         ]
 
 
+def extract_frame_inference_times(prediction_rows):
+    """Return one inference latency per sampled frame from object-level CSV rows."""
+    timing_by_frame = {}
+    for row in prediction_rows:
+        if row.get("Inference (ms)") not in (None, ""):
+            timing_by_frame.setdefault(row["frame_index"], float(row["Inference (ms)"]))
+    return list(timing_by_frame.values())
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ground-truth", required=True, help="CSV with frame_index,track_id,class_id,x,y,width,height")
