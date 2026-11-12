@@ -52,7 +52,7 @@ def evaluate_tracking(
     ground_truth: Iterable[Mapping[str, Any]],
     predictions: Iterable[Mapping[str, Any]],
     iou_threshold: float = 0.5,
-    inference_times_ms: Iterable[float] | None = None,
+    processing_times_ms: Iterable[float] | None = None,
 ) -> dict[str, Any]:
     """Compute greedy class-aware detection metrics and consecutive-frame ID switches."""
     if not isfinite(iou_threshold) or not 0.0 < iou_threshold <= 1.0:
@@ -101,11 +101,11 @@ def evaluate_tracking(
     recall = tp / (tp + fn) if tp + fn else 0.0
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
     timings = []
-    if inference_times_ms is not None:
-        for value in inference_times_ms:
+    if processing_times_ms is not None:
+        for value in processing_times_ms:
             timing = float(value)
             if not isfinite(timing) or timing <= 0:
-                raise ValueError("inference times must be positive milliseconds")
+                raise ValueError("processing times must be positive milliseconds")
             timings.append(timing)
     mean_latency = sum(timings) / len(timings) if timings else None
     return {
@@ -116,8 +116,8 @@ def evaluate_tracking(
         "precision": precision, "recall": recall, "f1": f1,
         "mean_matched_iou": iou_sum / tp if tp else 0.0,
         "id_switches": id_switches,
-        "mean_inference_ms": mean_latency,
-        "estimated_fps": 1000.0 / mean_latency if mean_latency else None,
+        "mean_processing_ms": mean_latency,
+        "estimated_processing_fps": 1000.0 / mean_latency if mean_latency else None,
         "iou_threshold": iou_threshold,
         "matching_note": "Greedy class-aware IoU matching; ID switches count changes on consecutive evaluated frames only.",
     }
