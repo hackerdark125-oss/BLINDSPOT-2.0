@@ -7,6 +7,7 @@ BlindSpot 2.0 is an experimental computer-vision research prototype that highlig
 
 ## Features
 - Analyse up to four recorded camera videos in one session
+- Align multi-camera sample timestamps with manual per-camera offsets and a configurable skew tolerance
 - Bounded live capture from a local webcam or RTSP/HTTP(S) stream
 - Configurable OpenCV sampling interval and frame limit
 - Per-cell image-quality confidence heatmaps
@@ -55,7 +56,7 @@ Live capture runs on the machine hosting the Streamlit process. A remotely hoste
 
 All images must have the same resolution. A lower reprojection error is generally preferable, but it is not by itself proof of good calibration.
 
-For **Two-camera stereo extrinsics**, first calibrate each camera separately and upload both JSON files. Then upload synchronized paired chessboard photos in matching order: each pair must show the same rigid board pose from both cameras. The stereo workflow estimates relative rotation, translation, essential matrix, and fundamental matrix. Translation uses the same unit as the chessboard square size. Both cameras must have matching image dimensions and board geometry. This is a calibration result, not yet a 3D scene-coverage map.
+For **Two-camera stereo extrinsics**, first calibrate each camera separately and upload both JSON files. Then upload synchronized paired chessboard photos in matching order: each pair must show the same rigid board pose from both cameras. The stereo workflow estimates relative rotation, translation, essential matrix, and fundamental matrix. Translation uses the same unit as the chessboard square size. Both cameras must have matching image dimensions and board geometry. The recorded-video dashboard can also align sampled timelines using manual offsets and a skew tolerance; this is timestamp matching, not hardware synchronization. Stereo calibration is a relative pose result, not yet a 3D scene-coverage map.
 
 For **Stereo depth preview**, upload both intrinsic JSON files, the stereo extrinsics JSON, and a synchronized image pair from the calibrated cameras. The app rectifies the pair, estimates disparity with StereoSGBM, and reprojects disparity into a depth map. Depth units follow the chessboard square-size unit. Depth quality depends on accurate calibration, fixed camera geometry, synchronization, texture, and visibility in both views; invalid pixels are expected around occlusions and low-texture regions. This is a prototype depth estimate, not a safety or measurement guarantee.
 
@@ -110,7 +111,8 @@ Each sampled frame is divided into a configurable grid. Every cell receives a he
 - [x] Optional YOLO11 detection across all 80 COCO classes with ByteTrack IDs
 - [x] Quantitative detection/tracking evaluator and per-frame processing benchmark tooling
 - [x] Scene-change resets and ORB/RANSAC global camera-motion compensation for motion diagnostics
-- [ ] Multi-camera time synchronisation and validated 3D coverage reconstruction
+- [x] Multi-camera timestamp alignment utility and dashboard export (manual offsets; no hardware sync guarantee)
+- [ ] Validated 3D coverage reconstruction
 - [ ] Geometric multi-camera coverage estimation using camera pose / visual localisation
 - [x] Quality-score agreement evaluator and per-cell human-label export tooling
 - [ ] Validated uncertainty model and representative benchmark dataset
