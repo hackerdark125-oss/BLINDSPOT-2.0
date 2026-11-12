@@ -349,7 +349,7 @@ elif mode == "AI object detection & tracking":
                         observations.append({
                             "Frame index": result.frame_index,
                             "Time (s)": result.timestamp_seconds,
-                            "Inference (ms)": result.inference_time_ms,
+                            "YOLO + ByteTrack (ms)": result.inference_time_ms,
                             "Track ID": item.track_id,
                             "Class": item.class_name,
                             "Class ID": item.class_id,
@@ -358,7 +358,7 @@ elif mode == "AI object detection & tracking":
                             "Width": item.width, "Height": item.height,
                         })
                 ai_df = pd.DataFrame(observations, columns=[
-                    "Frame index", "Time (s)", "Inference (ms)", "Track ID", "Class", "Class ID", "Confidence",
+                    "Frame index", "Time (s)", "YOLO + ByteTrack (ms)", "Track ID", "Class", "Class ID", "Confidence",
                     "X", "Y", "Width", "Height",
                 ])
                 mean_inference_ms = float(np.mean([r.inference_time_ms for r in ai_results]))
@@ -366,9 +366,9 @@ elif mode == "AI object detection & tracking":
                 m1.metric("Frames processed", len(ai_results))
                 m2.metric("Unique tracked IDs", len(track_ids))
                 m3.metric("Object observations", len(observations))
-                m4.metric("Mean inference", f"{mean_inference_ms:.1f} ms")
+                m4.metric("Mean YOLO + tracker", f"{mean_inference_ms:.1f} ms")
                 st.caption(
-                    f"Inference-only throughput: {1000.0 / mean_inference_ms:.1f} FPS · "
+                    f"YOLO + ByteTrack processing: {1000.0 / mean_inference_ms:.1f} FPS · "
                     "excludes video decoding, rendering, and CSV export"
                 )
                 if class_counts:
@@ -384,7 +384,7 @@ elif mode == "AI object detection & tracking":
                 frame_metrics_df = pd.DataFrame([{
                     "Frame index": result.frame_index,
                     "Time (s)": result.timestamp_seconds,
-                    "Inference (ms)": result.inference_time_ms,
+                    "YOLO + ByteTrack (ms)": result.inference_time_ms,
                     "Detections": len(result.detections),
                 } for result in ai_results])
                 st.download_button(
