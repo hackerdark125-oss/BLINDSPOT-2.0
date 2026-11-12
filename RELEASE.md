@@ -80,3 +80,14 @@ remains intentionally separate from automated CI.
 - Ground-truth trajectory evaluator: ATE and consecutive RPE using same-unit trajectories and first-pose alignment without scale fitting.
 
 These additions expand the software prototype. They do not change the requirement for real camera validation before field-use claims.
+
+
+## Dashboard additions
+
+The dashboard exposes pairwise camera-rig composition, optional ICP refinement
+for multi-camera PLY fusion, full SE(3) correction with manually supplied
+relative-pose constraints, and stereo relative-confidence visualisation/export.
+These interfaces improve workflow access but do not automatically verify
+calibration targets, synchronize cameras, detect metric loop closures, or
+certify registration correctness. The same independent-measurement release gate
+continues to apply.
