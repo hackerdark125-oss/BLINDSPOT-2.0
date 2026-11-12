@@ -41,7 +41,9 @@ def test_synchronization_rejects_invalid_streams(streams):
 
 def test_failed_multi_camera_match_does_not_consume_partial_samples():
     matches = synchronize_timestamps(
-        {"a": [0.0, 0.05], "b": [0.05], "c": [10.0]},
-        tolerance_seconds=0.1,
+        {"a": [0.0, 0.05], "b": [0.05], "c": [0.05]},
+        tolerance_seconds=0.01,
     )
-    assert matches == []
+    assert len(matches) == 1
+    assert matches[0]["reference_time_seconds"] == pytest.approx(0.05)
+    assert matches[0]["samples"]["b"]["sample_index"] == 0
