@@ -744,6 +744,15 @@ else:
             "visibility. Camera pose, plane height, and stereo translation must use the same "
             "world coordinate frame and distance unit."
         )
+        st.download_button(
+            "Download example downward-facing camera pose JSON",
+            json.dumps({
+                "rotation_matrix": [[1, 0, 0], [0, -1, 0], [0, 0, -1]],
+                "translation_vector": [0, 0, 2],
+            }, indent=2).encode("utf-8"),
+            file_name="example_camera_a_world_pose.json",
+            mime="application/json",
+        )
         col_a, col_b = st.columns(2)
         with col_a:
             coverage_intrinsics_a = st.file_uploader(
