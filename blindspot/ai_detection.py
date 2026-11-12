@@ -27,6 +27,7 @@ class ObjectDetection:
 
 @dataclass(frozen=True)
 class ObjectTrackingFrame:
+    frame_index: int
     timestamp_seconds: float
     annotated_frame: np.ndarray
     detections: tuple[ObjectDetection, ...]
@@ -173,6 +174,7 @@ def process_video(
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (40, 220, 80), 2, cv2.LINE_AA,
                     )
                 output.append(ObjectTrackingFrame(
+                    frame_index=frame_index,
                     timestamp_seconds=frame_index / fps,
                     annotated_frame=annotated,
                     detections=tuple(detections),
