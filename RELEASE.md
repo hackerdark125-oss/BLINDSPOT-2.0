@@ -43,7 +43,7 @@ Do not publish a field-accuracy or safety claim without this evidence.
 - YOLO/ByteTrack masking only excludes detected tracked moving regions; missed
   and untracked objects can remain in the reconstruction.
 - Stereo visual odometry is local and can accumulate drift.
-- The SE(3) pose-graph API jointly adjusts rotations and translations for short trajectories using supplied relative-pose constraints. It does not discover or metrically verify loop closures; incorrect constraints can worsen results.
+- The SE(3) pose-graph API and dashboard workflow jointly adjust rotations and translations for short trajectories using supplied relative-pose constraints. They do not discover or metrically verify loop closures; incorrect constraints can worsen results.
 - Multi-camera point-cloud fusion still requires poses in a common coordinate frame and distance unit. A separate ICP API can estimate a local rigid alignment between overlapping clouds, but it is sensitive to initialisation, overlap, and scene geometry; it is not intrinsic calibration or a guarantee of correct extrinsics.
 - PLY import supports ASCII and binary little-/big-endian PLY 1.0 with scalar
   XYZRGB vertex properties; list-valued vertex properties are not supported.
@@ -51,8 +51,10 @@ Do not publish a field-accuracy or safety claim without this evidence.
 - Stereo per-pixel confidence combines left-right consistency and local texture as a relative heuristic; it is not a calibrated probability.
 - Visual loop-closure candidate retrieval uses ORB matching and RANSAC geometry,
   but it does not generate metric pose constraints or confirm a loop automatically.
-  Full 6DoF pose-graph optimisation remains future work; current correction uses
-  manually verified translation constraints.
+  The full SE(3) pose-graph optimiser is implemented and can jointly refine
+  rotations and translations from supplied relative-pose constraints. Dashboard
+  constraints are manually entered and must be independently verified; automatic
+  metric loop-closure detection and constraint generation remain unimplemented.
 
 ## Release procedure
 
@@ -91,3 +93,16 @@ These interfaces improve workflow access but do not automatically verify
 calibration targets, synchronize cameras, detect metric loop closures, or
 certify registration correctness. The same independent-measurement release gate
 continues to apply.
+
+
+## Deployment readiness checks
+
+Before publishing a hosted instance:
+
+- Build the Docker image from the exact commit intended for deployment and record its commit SHA.
+- Start the container and verify the Streamlit health endpoint from the host.
+- Confirm the intended camera stream is reachable from the runtime network; the health endpoint does not test camera access.
+- Confirm camera credentials are supplied through the deployment secret manager/environment and are absent from the image, repository, and logs.
+- Verify CPU and memory limits with representative clips and point-cloud sizes; no universal production sizing is claimed.
+- Restrict dashboard network access and use authenticated/restricted hosting when handling private camera feeds.
+- Retain the CI run URL, image tag/digest, calibration inputs, benchmark outputs, and known limitations with the deployment record.
