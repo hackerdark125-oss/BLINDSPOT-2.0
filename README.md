@@ -208,10 +208,10 @@ The new `blindspot.uncertainty` module evaluates probability-like confidence val
 Prepare a CSV with `predicted_confidence,outcome` columns, where confidence is in [0, 1] and outcome is 0 or 1:
 
 ```bash
-python scripts/benchmark_uncertainty.py --input labelled_confidence.csv --output uncertainty_calibration.json
+python scripts/benchmark_uncertainty.py --train confidence_train.csv --eval confidence_heldout.csv --output uncertainty_calibration.json
 ```
 
-Use the isotonic calibrator only after fitting on a training split; report final metrics on a separate held-out split. The existing image-quality heuristic score is not automatically a probability, and this framework does not make it calibrated without representative independent labels.
+The CLI requires separate training and held-out files: it fits the isotonic calibrator only on the training split and reports raw/calibrated metrics only on the held-out split. The existing image-quality heuristic score is not automatically a probability, and this framework does not make it calibrated without representative independent labels.
 
 
 ## Stereo visual odometry and multi-frame point-cloud fusion
@@ -224,3 +224,10 @@ Python API: `blindspot.reconstruction.estimate_stereo_visual_motion`. Chain succ
 
 
 The **Stereo visual odometry & 3D fusion** dashboard mode accepts two synchronized stereo videos plus both intrinsics files and stereo extrinsics. It samples frame pairs, computes depth, estimates local metric camera motion with PnP-RANSAC, chains camera poses, and exports a fused PLY point cloud plus a trajectory CSV. The point cloud uses the rectified camera projection matrix returned by stereo rectification. The workflow is compute-intensive; start with short clips and a coarse point-cloud stride. Failed frame pairs are skipped and counted. Pose drift accumulates because this prototype does not implement loop closure or global optimisation.
+
+
+## Dashboard uncertainty calibration
+
+Open **Camera calibration → Uncertainty calibration**. Upload two separate CSV files, each containing `predicted_confidence,outcome`: one for fitting and one for held-out evaluation. The dashboard fits isotonic regression only on the training file, then reports Brier score, log loss, ECE, and reliability bins before and after calibration on the held-out file. It can export the fitted mapping and a CSV containing calibrated held-out scores.
+
+Do not feed the existing 0–100 image-quality heuristic directly into this probability calibrator. It must first be converted into a meaningful confidence estimate with independently labelled outcomes, and any conversion must be evaluated without data leakage. Better calibration metrics are not guaranteed; report the held-out results even when calibration makes them worse.

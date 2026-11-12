@@ -169,3 +169,13 @@ The included evaluator uses greedy class-aware IoU matching and counts ID change
 - [ ] Run a short clip first; review reconstructed/skipped pair counts and PnP inlier ratios.
 - [ ] Inspect the trajectory CSV and fused PLY in a point-cloud viewer.
 - [ ] Compare trajectory and reconstruction against independently measured ground truth before making accuracy claims.
+
+
+## 6.8 Held-out uncertainty calibration dashboard
+
+- [ ] Prepare separate training and held-out CSV files with independently labelled binary outcomes.
+- [ ] Confirm confidence values represent probabilities in [0, 1], not raw 0–100 image-quality scores.
+- [ ] Fit the isotonic calibrator using training data only.
+- [ ] Compare Brier score, log loss, ECE, and reliability bins on held-out data before/after calibration.
+- [ ] Retain the held-out sample count and label-generation rubric with every report.
+- [ ] Repeat on different scenes, lighting, camera distances, and motion conditions; do not generalise from one split.
