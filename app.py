@@ -30,6 +30,8 @@ from blindspot.uncertainty import (
     evaluate_calibration, fit_isotonic_calibrator, apply_isotonic_calibrator,
 )
 from blindspot.pose_graph import optimize_pose_graph_translations
+from blindspot.multicam import fuse_multicamera_point_clouds
+from blindspot.ply import read_ascii_ply
 
 
 @st.cache_resource(show_spinner=False)
@@ -487,7 +489,7 @@ else:
     st.subheader("Camera calibration")
     calibration_mode = st.radio(
         "Calibration workflow",
-        ["Single-camera intrinsics", "Two-camera stereo extrinsics", "Stereo depth preview", "Stereo visual odometry & 3D fusion", "Planar coverage preview", "Uncertainty calibration"],
+        ["Single-camera intrinsics", "Two-camera stereo extrinsics", "Stereo depth preview", "Stereo visual odometry & 3D fusion", "Multi-camera PLY fusion", "Planar coverage preview", "Uncertainty calibration"],
         horizontal=True,
     )
     if calibration_mode == "Uncertainty calibration":
@@ -1145,6 +1147,141 @@ else:
                     capture_b.release()
                 for temp_path in temp_paths:
                     Path(temp_path).unlink(missing_ok=True)
+
+    elif calibration_mode == "Multi-camera PLY fusion":
+        st.write(
+            "Fuse exported camera-local XYZRGB point clouds into one shared 3D world frame "
+            "using a verified camera-to-world pose for each camera."
+        )
+        st.warning(
+            "Upload ASCII PLY files exported by BLINDSPOT and a pose JSON with matching camera IDs. "
+            "All poses must use one verified world coordinate frame and the same distance unit. "
+            "This workflow does not estimate camera extrinsics or synchronize recordings."
+        )
+        example_pose = {
+            "distance_unit": "meters",
+            "cameras": {
+                "camera_1": {
+                    "rotation_matrix": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+                    "translation_vector": [0, 0, 0],
+                },
+                "camera_2": {
+                    "rotation_matrix": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+                    "translation_vector": [0.25, 0, 0],
+                },
+            },
+        }
+        st.download_button(
+            "Download example multi-camera pose JSON",
+            json.dumps(example_pose, indent=2).encode("utf-8"),
+            file_name="blindspot_multicamera_poses_example.json",
+            mime="application/json",
+        )
+        multi_cloud_files = st.file_uploader(
+            "Camera point clouds (name files camera_1.ply, camera_2.ply, etc.)",
+            type=["ply"], accept_multiple_files=True, key="multicam_ply_uploads",
+        )
+        multi_pose_file = st.file_uploader(
+            "Shared camera-to-world poses JSON", type=["json"], key="multicam_pose_upload"
+        )
+        multi_voxel_size = st.number_input(
+            "World-frame voxel size (same distance unit as poses)",
+            min_value=0.0001, value=0.02, step=0.01, format="%.4f",
+            key="multicam_voxel_size",
+        )
+        if st.button(
+            "Fuse multi-camera 3D point clouds",
+            type="primary",
+            disabled=not (multi_cloud_files and multi_pose_file),
+            key="run_multicam_fusion",
+        ):
+            try:
+                pose_document = json.loads(multi_pose_file.getvalue().decode("utf-8"))
+                camera_pose_document = pose_document.get("cameras")
+                if not isinstance(camera_pose_document, dict) or not camera_pose_document:
+                    raise ValueError("pose JSON must contain a non-empty cameras object")
+                distance_unit = pose_document.get("distance_unit", "unspecified")
+                if not isinstance(distance_unit, str) or not distance_unit.strip():
+                    raise ValueError("distance_unit must be a non-empty string")
+                camera_ids = [Path(upload.name).stem for upload in multi_cloud_files]
+                if len(camera_ids) != len(set(camera_ids)):
+                    raise ValueError("uploaded PLY filenames must have unique camera IDs")
+                if set(camera_ids) != set(camera_pose_document):
+                    raise ValueError(
+                        "PLY filename stems must match the camera IDs in the pose JSON exactly"
+                    )
+                camera_clouds = {}
+                camera_poses = {}
+                with st.spinner("Reading camera point clouds and registering them in the shared world frame..."):
+                    for camera_id, uploaded in zip(camera_ids, multi_cloud_files):
+                        camera_clouds[camera_id] = read_ascii_ply(uploaded.getvalue())
+                        camera_pose = load_camera_pose_json(
+                            json.dumps(camera_pose_document[camera_id])
+                        )
+                        camera_poses[camera_id] = (
+                            camera_pose.rotation_matrix, camera_pose.translation_vector
+                        )
+                    fusion_result = fuse_multicamera_point_clouds(
+                        camera_clouds, camera_poses, voxel_size=float(multi_voxel_size)
+                    )
+                if fusion_result.output_points == 0:
+                    st.warning("No vertices were present in the uploaded camera point clouds.")
+                else:
+                    st.success(
+                        f"Fused {fusion_result.input_points:,} input points into "
+                        f"{fusion_result.output_points:,} world-frame points."
+                    )
+                    metric_cols = st.columns(3)
+                    metric_cols[0].metric("Cameras fused", len(fusion_result.cameras))
+                    metric_cols[1].metric("Input points", f"{fusion_result.input_points:,}")
+                    metric_cols[2].metric("Output points", f"{fusion_result.output_points:,}")
+                    camera_summary = pd.DataFrame([
+                        {"Camera": item.camera_id, "Input points": item.input_points,
+                         "Valid points": item.valid_points}
+                        for item in fusion_result.cameras
+                    ])
+                    st.dataframe(camera_summary, use_container_width=True, hide_index=True)
+                    preview_step = max(1, len(fusion_result.points) // 10000)
+                    preview = pd.DataFrame(
+                        fusion_result.points[::preview_step, :3], columns=["X", "Y", "Z"]
+                    )
+                    scene_figure = px.scatter_3d(
+                        preview, x="X", y="Y", z="Z", color="Z",
+                        title="Fused multi-camera 3D point cloud · sampled preview",
+                    )
+                    scene_figure.update_layout(height=520)
+                    st.plotly_chart(scene_figure, use_container_width=True)
+                    with tempfile.TemporaryDirectory() as output_dir:
+                        fused_path = write_ply(
+                            Path(output_dir) / "blindspot_multicamera_fused.ply",
+                            fusion_result.points,
+                        )
+                        fused_bytes = fused_path.read_bytes()
+                    st.download_button(
+                        "Download fused multi-camera scene (PLY)", fused_bytes,
+                        file_name="blindspot_multicamera_fused.ply",
+                        mime="application/octet-stream",
+                    )
+                    fusion_summary = {
+                        "distance_unit": distance_unit,
+                        "camera_count": len(fusion_result.cameras),
+                        "input_points": fusion_result.input_points,
+                        "output_points": fusion_result.output_points,
+                        "voxel_size": fusion_result.voxel_size,
+                        "cameras": [
+                            {"camera_id": item.camera_id, "input_points": item.input_points,
+                             "valid_points": item.valid_points}
+                            for item in fusion_result.cameras
+                        ],
+                    }
+                    st.download_button(
+                        "Download fusion summary (JSON)",
+                        json.dumps(fusion_summary, indent=2).encode("utf-8"),
+                        file_name="blindspot_multicamera_fusion_summary.json",
+                        mime="application/json",
+                    )
+            except Exception as exc:
+                st.error(f"Multi-camera 3D fusion failed: {exc}")
 
     else:
         st.write(
