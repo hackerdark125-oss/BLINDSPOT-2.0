@@ -1,7 +1,9 @@
 """Quantitative evaluation of stereo depth estimates against known distances."""
 from __future__ import annotations
 
-from math import isfinite, sqrt\n\nimport numpy as np
+from math import isfinite, sqrt
+
+import numpy as np
 from statistics import median
 from typing import Iterable, Mapping, Any
 
