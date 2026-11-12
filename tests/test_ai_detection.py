@@ -157,3 +157,10 @@ def test_process_stream_rejects_invalid_duration():
 
     with pytest.raises(ValueError, match="duration_seconds"):
         process_stream("0", duration_seconds=0, detector=YOLODetector(model=FakeModel()))
+
+
+def test_coco_class_catalogue_contains_all_eighty_unique_ids():
+    from blindspot.ai_detection import COCO_CLASSES
+
+    assert len(COCO_CLASSES) == 80
+    assert sorted(COCO_CLASSES.values()) == list(range(80))
