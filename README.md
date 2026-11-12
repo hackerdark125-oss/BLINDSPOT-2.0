@@ -444,3 +444,23 @@ does not automatically capture/detect calibration targets, synchronise
 cameras, or globally refine noisy pairwise estimates. All translations must
 share one unit, and disconnected or inconsistent calibration graphs must be
 resolved before using the rig for fusion.
+
+
+## Ground-truth trajectory benchmark
+
+The metric trajectory evaluator compares estimated camera-to-world 4x4 pose
+matrices against an equal-length independently measured reference trajectory.
+It reports first-pose-aligned absolute trajectory error (ATE) and consecutive
+relative pose error (translation RMSE and rotation RMSE in degrees). It does not
+fit a scale factor, so both trajectories must use the same distance unit.
+
+Save each trajectory as JSON containing an array of homogeneous 4x4 matrices,
+then run:
+
+```bash
+python scripts/benchmark_trajectory.py --estimated estimated_poses.json --ground-truth ground_truth_poses.json --output trajectory_benchmark.json
+```
+
+The evaluator provides quantitative evidence only for the supplied reference
+path and timestamps. Ground truth must be independently surveyed or measured;
+synthetic tests do not establish real-world localisation accuracy.
