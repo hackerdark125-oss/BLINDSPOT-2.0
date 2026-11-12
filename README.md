@@ -62,6 +62,9 @@ The motion tracker computes dense optical flow between sampled frames with OpenC
 
 **Activity age is not observation freshness.** A perfectly static scene can have a high activity age even while the camera is operating correctly. Camera movement, lighting changes, compression artefacts, and sampling interval can affect optical-flow values. Use these maps as diagnostics for human review, not as proof that an area is unseen or stale.
 
+## Release validation
+See [VALIDATION.md](VALIDATION.md) for the full automated and real-camera release checklist, including pedestrian detection, calibration, stereo depth, and benchmark evidence.
+
 ## Deployment
 See [DEPLOYMENT.md](DEPLOYMENT.md) for Docker and Streamlit Community Cloud instructions. The repository includes a Dockerfile and a dark Streamlit theme.
 
