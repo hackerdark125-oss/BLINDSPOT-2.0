@@ -26,7 +26,7 @@ BlindSpot 2.0 is an experimental computer-vision research prototype that highlig
 - Planar two-camera ground-footprint and overlap estimation from calibrated stereo pose
 - Stereo visual odometry, depth-to-3D point-cloud reconstruction, and PLY export
 - Optional tracked-object masking during reconstruction to reduce moving-object contamination
-- Manual loop-closure drift correction using independently verified translation constraints
+- ORB/RANSAC visual loop-closure candidate retrieval plus manual verified translation-only drift correction
 - Multi-camera XYZRGB point-cloud fusion using externally calibrated camera-to-world poses
 - ASCII and binary little-/big-endian PLY 1.0 import, plus a batch fusion CLI and JSON summaries
 - Stereo rectification, SGBM disparity estimation, and depth-map CSV export
