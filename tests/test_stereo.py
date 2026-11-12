@@ -108,3 +108,12 @@ def test_stereo_depth_rejects_invalid_disparity_range():
             image, image, make_intrinsics(), make_intrinsics(), make_stereo(),
             num_disparities=15,
         )
+
+def test_stereo_json_rejects_zero_baseline():
+    from blindspot.stereo import load_stereo_calibration_json
+
+    data = make_stereo().__dict__.copy()
+    data["translation_vector"] = [0.0, 0.0, 0.0]
+    import json
+    with pytest.raises(ValueError, match="invalid parameters"):
+        load_stereo_calibration_json(json.dumps(data))
