@@ -26,6 +26,7 @@ BlindSpot 2.0 is an experimental computer-vision research prototype that highlig
 - CSV-based stereo-depth benchmark CLI for MAE, RMSE, relative error, and valid-pixel coverage
 - Calibration JSON export and undistortion preview
 - Weak-region prioritisation, multi-camera comparison, and CSV exports
+- Per-cell quality-score label template and human-agreement benchmark (MAE, RMSE, bias, Pearson/Spearman, score bins)
 - Unit tests and GitHub Actions CI
 
 ## Windows setup
@@ -111,7 +112,8 @@ Each sampled frame is divided into a configurable grid. Every cell receives a he
 - [x] Scene-change resets and ORB/RANSAC global camera-motion compensation for motion diagnostics
 - [ ] Multi-camera time synchronisation and validated 3D coverage reconstruction
 - [ ] Geometric multi-camera coverage estimation using camera pose / visual localisation
-- [ ] Validated uncertainty model and benchmark dataset
+- [x] Quality-score agreement evaluator and per-cell human-label export tooling
+- [ ] Validated uncertainty model and representative benchmark dataset
 - [x] Quantitative stereo-depth benchmark evaluator and CLI for known-distance samples
 
 ## Limitations and safety
@@ -131,6 +133,16 @@ Python · OpenCV · NumPy · Pandas · Plotly · Streamlit · Pytest · GitHub A
 
 ## License
 MIT
+
+## Image-quality score evaluation
+
+The app can export a per-cell CSV template containing the heuristic `predicted_score` and an empty `reference_score` column. Review cells using a consistent human rubric (for example, 0 = unusable image detail and 100 = excellent usable detail), fill the reference scores, then run:
+
+```bat
+python scripts/benchmark_quality.py --input quality_labels.csv --output quality_benchmark.json
+```
+
+The report compares score agreement using MAE, RMSE, mean bias, Pearson and Spearman correlation, and score-bin summaries. This evaluates agreement with the labels you provide; it does not make the score a probability or prove generalisation beyond the labelled scenes.
 
 ## Stereo depth benchmark
 
