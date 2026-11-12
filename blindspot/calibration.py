@@ -22,6 +22,8 @@ class CameraCalibration:
     square_size: float
     accepted_views: int
     rejected_views: int
+    mean_view_reprojection_error_px: float = 0.0
+    max_view_reprojection_error_px: float = 0.0
 
     def to_json(self) -> str:
         """Serialize calibration parameters in a portable JSON format."""
@@ -101,11 +103,55 @@ def calibrate_camera(
             f"found {len(object_points)} and rejected {rejected}."
         )
 
-    rms, camera_matrix, distortion, _, _ = cv2.calibrateCamera(
-        object_points, image_points, image_size, None, None
+    def fit(points_3d, points_2d):
+        return cv2.calibrateCamera(
+            points_3d, points_2d, image_size, None, None
+        )
+
+    rms, camera_matrix, distortion, rotations, translations = fit(
+        object_points, image_points
     )
     if not np.isfinite(rms) or not np.isfinite(camera_matrix).all() or not np.isfinite(distortion).all():
         raise RuntimeError("Camera calibration returned non-finite parameters")
+
+    def per_view_errors(points_3d, points_2d, matrix, coefficients, rvecs, tvecs):
+        errors = []
+        for object_view, image_view, rotation_vector, translation_vector in zip(
+            points_3d, points_2d, rvecs, tvecs
+        ):
+            projected, _ = cv2.projectPoints(
+                object_view, rotation_vector, translation_vector,
+                matrix, coefficients,
+            )
+            residual = projected.reshape(-1, 2) - image_view.reshape(-1, 2)
+            errors.append(float(np.sqrt(np.mean(np.sum(residual * residual, axis=1)))))
+        return np.asarray(errors, dtype=np.float64)
+
+    initial_errors = per_view_errors(
+        object_points, image_points, camera_matrix, distortion, rotations, translations
+    )
+    median_error = float(np.median(initial_errors))
+    median_absolute_deviation = float(np.median(np.abs(initial_errors - median_error)))
+    outlier_limit = median_error + max(3.5 * 1.4826 * median_absolute_deviation, 0.5)
+    keep = initial_errors <= outlier_limit
+    outlier_count = int(np.count_nonzero(~keep))
+
+    # Refit once after removing grossly inconsistent chessboard views. Never
+    # discard so many views that the caller's requested minimum is violated.
+    if outlier_count and int(np.count_nonzero(keep)) >= min_views:
+        object_points = [points for points, accepted in zip(object_points, keep) if accepted]
+        image_points = [points for points, accepted in zip(image_points, keep) if accepted]
+        rms, camera_matrix, distortion, rotations, translations = fit(
+            object_points, image_points
+        )
+        if not np.isfinite(rms) or not np.isfinite(camera_matrix).all() or not np.isfinite(distortion).all():
+            raise RuntimeError("Camera calibration returned non-finite parameters")
+
+    final_errors = per_view_errors(
+        object_points, image_points, camera_matrix, distortion, rotations, translations
+    )
+    if not np.isfinite(final_errors).all():
+        raise RuntimeError("Camera calibration produced non-finite per-view reprojection errors")
 
     return CameraCalibration(
         camera_matrix=camera_matrix.tolist(),
@@ -117,7 +163,9 @@ def calibrate_camera(
         board_rows=rows,
         square_size=float(square_size),
         accepted_views=len(object_points),
-        rejected_views=rejected,
+        rejected_views=rejected + (outlier_count if len(object_points) < len(initial_errors) else 0),
+        mean_view_reprojection_error_px=float(np.mean(final_errors)),
+        max_view_reprojection_error_px=float(np.max(final_errors)),
     )
 
 
@@ -147,6 +195,11 @@ def load_calibration_json(content: str) -> CameraCalibration:
         raise ValueError("invalid calibration JSON") from exc
     if (matrix.shape != (3, 3) or distortion.size < 4
             or not np.isfinite(matrix).all() or not np.isfinite(distortion).all()
+            or not np.isfinite(calibration.rms_reprojection_error)
+            or not np.isfinite(calibration.mean_view_reprojection_error_px)
+            or not np.isfinite(calibration.max_view_reprojection_error_px)
+            or calibration.mean_view_reprojection_error_px < 0
+            or calibration.max_view_reprojection_error_px < 0
             or calibration.image_width < 1 or calibration.image_height < 1):
         raise ValueError("calibration JSON contains invalid camera parameters")
     return calibration
