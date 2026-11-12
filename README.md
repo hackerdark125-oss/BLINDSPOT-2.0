@@ -16,6 +16,7 @@ BlindSpot 2.0 is an experimental computer-vision research prototype that highlig
 - Per-grid-cell time-since-motion activity maps
 - Repeated-frame diagnostic for potentially frozen feeds
 - Chessboard-based camera intrinsic and lens-distortion calibration
+- Paired chessboard stereo calibration for relative camera rotation and translation
 - Calibration JSON export and undistortion preview
 - Weak-region prioritisation, multi-camera comparison, and CSV exports
 - Unit tests and GitHub Actions CI
@@ -44,7 +45,9 @@ Live capture runs on the machine hosting the Streamlit process. A remotely hoste
 3. Enter the number of inner corner intersections and the real-world square size.
 4. Run calibration, review the reprojection RMS, and download the JSON parameters.
 
-All images must have the same resolution. A lower reprojection error is generally preferable, but it is not by itself proof of good calibration. The current release estimates single-camera intrinsics; it does not yet calculate camera-to-camera extrinsics or 3D coverage.
+All images must have the same resolution. A lower reprojection error is generally preferable, but it is not by itself proof of good calibration.
+
+For **Two-camera stereo extrinsics**, first calibrate each camera separately and upload both JSON files. Then upload synchronized paired chessboard photos in matching order: each pair must show the same rigid board pose from both cameras. The stereo workflow estimates relative rotation, translation, essential matrix, and fundamental matrix. Translation uses the same unit as the chessboard square size. Both cameras must have matching image dimensions and board geometry. This is a calibration result, not yet a 3D scene-coverage map.
 
 ## Understanding motion activity age
 The motion tracker computes dense optical flow between sampled frames with OpenCV's Farneback algorithm. Each grid cell stores its average flow magnitude and elapsed time since motion last exceeded a configurable threshold.
@@ -69,9 +72,10 @@ Each sampled frame is divided into a configurable grid. Every cell receives a he
 - [x] Repeated-frame / possible-freeze diagnostics
 - [x] Dense optical-flow maps and per-cell motion activity age
 - [x] Chessboard-based single-camera intrinsic calibration and undistortion preview
+- [x] Paired chessboard stereo extrinsic calibration
 - [x] Input validation, unit tests, and CI
 - [ ] Scene-change-aware activity baselines and robust camera-motion compensation
-- [ ] Multi-camera extrinsic calibration and time synchronisation
+- [ ] Multi-camera time synchronisation and validated 3D coverage reconstruction
 - [ ] Geometric multi-camera coverage estimation using camera pose / visual localisation
 - [ ] Validated uncertainty model and benchmark dataset
 
