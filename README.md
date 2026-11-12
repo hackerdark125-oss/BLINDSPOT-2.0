@@ -17,6 +17,7 @@ BlindSpot 2.0 is an experimental computer-vision research prototype that highlig
 - Repeated-frame diagnostic for potentially frozen feeds
 - Chessboard-based camera intrinsic and lens-distortion calibration
 - Paired chessboard stereo calibration for relative camera rotation and translation
+- Stereo rectification, SGBM disparity estimation, and depth-map CSV export
 - Calibration JSON export and undistortion preview
 - Weak-region prioritisation, multi-camera comparison, and CSV exports
 - Unit tests and GitHub Actions CI
@@ -49,6 +50,8 @@ All images must have the same resolution. A lower reprojection error is generall
 
 For **Two-camera stereo extrinsics**, first calibrate each camera separately and upload both JSON files. Then upload synchronized paired chessboard photos in matching order: each pair must show the same rigid board pose from both cameras. The stereo workflow estimates relative rotation, translation, essential matrix, and fundamental matrix. Translation uses the same unit as the chessboard square size. Both cameras must have matching image dimensions and board geometry. This is a calibration result, not yet a 3D scene-coverage map.
 
+For **Stereo depth preview**, upload both intrinsic JSON files, the stereo extrinsics JSON, and a synchronized image pair from the calibrated cameras. The app rectifies the pair, estimates disparity with StereoSGBM, and reprojects disparity into a depth map. Depth units follow the chessboard square-size unit. Depth quality depends on accurate calibration, fixed camera geometry, synchronization, texture, and visibility in both views; invalid pixels are expected around occlusions and low-texture regions. This is a prototype depth estimate, not a safety or measurement guarantee.
+
 ## Understanding motion activity age
 The motion tracker computes dense optical flow between sampled frames with OpenCV's Farneback algorithm. Each grid cell stores its average flow magnitude and elapsed time since motion last exceeded a configurable threshold.
 
@@ -73,11 +76,13 @@ Each sampled frame is divided into a configurable grid. Every cell receives a he
 - [x] Dense optical-flow maps and per-cell motion activity age
 - [x] Chessboard-based single-camera intrinsic calibration and undistortion preview
 - [x] Paired chessboard stereo extrinsic calibration
+- [x] Stereo rectification, disparity estimation, and depth-map export
 - [x] Input validation, unit tests, and CI
 - [ ] Scene-change-aware activity baselines and robust camera-motion compensation
 - [ ] Multi-camera time synchronisation and validated 3D coverage reconstruction
 - [ ] Geometric multi-camera coverage estimation using camera pose / visual localisation
 - [ ] Validated uncertainty model and benchmark dataset
+- [ ] Quantitative stereo-depth benchmark against known-distance scenes
 
 ## Limitations and safety
 - Image-quality and motion maps are diagnostics, not measurements of physical-world visibility or 3D coverage.
