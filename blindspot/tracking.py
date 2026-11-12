@@ -32,8 +32,9 @@ class FrameFreezeDetector:
         small = cv2.resize(gray, (64, 64), interpolation=cv2.INTER_AREA)
         if self._previous is None:
             change = 1.0
+            self._still_count = 1
         else:
             change = float(np.mean(cv2.absdiff(small, self._previous)) / 255.0)
+            self._still_count = self._still_count + 1 if change <= self.threshold else 0
         self._previous = small
-        self._still_count = self._still_count + 1 if change <= self.threshold else 0
         return change, self._still_count >= self.consecutive_samples
