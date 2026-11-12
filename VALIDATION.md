@@ -68,6 +68,8 @@ Use a short clip containing several clearly visible, upright pedestrians.
 - [ ] Capture a textured scene with both cameras at the same time.
 - [ ] Place a flat target at a measured distance and compare estimated depth with the known distance.
 - [ ] Repeat at multiple distances and document median absolute error and invalid-pixel percentage.
+- [ ] Record one row per measured target with known distance, median valid depth, valid-pixel count, total-pixel count, and consistent units.
+- [ ] Run `python scripts/benchmark_depth.py --input depth_samples.csv --output depth_benchmark.json` and archive the JSON report.
 - [ ] Do not use the depth estimate for navigation, flight control, or safety decisions.
 
 ## 7. Release evidence
@@ -95,6 +97,8 @@ The repository can be considered **software-complete for its documented prototyp
 - [ ] Record precision, recall, F1, mean matched IoU, false positives, false negatives, and ID switches.
 - [ ] Measure inference latency separately on the target machine and record the hardware, model size, image size, and frame stride.
 - [ ] Repeat in daylight, low light, crowded scenes, and partial occlusion; keep each condition's result separate.
+
+The depth benchmark is only as reliable as the manually measured target distances and selected target regions. It reports error metrics but does not establish general depth accuracy.
 
 The motion compensation and scene-change heuristics are approximate; feature-poor scenes fall back to raw optical flow, and false scene-change detections remain possible. They are not visual odometry or camera-pose estimates.
 
