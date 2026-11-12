@@ -201,3 +201,101 @@ def process_video(
     if not output:
         raise ValueError("No readable frames were found in this video")
     return output
+
+
+def process_stream(
+    source: str | int,
+    duration_seconds: float = 15.0,
+    sample_every_frames: int = 3,
+    max_samples: int = 120,
+    weights: str = "yolo11n.pt",
+    classes: Sequence[int] | None = None,
+    confidence: float = 0.25,
+    image_size: int = 640,
+    detector: YOLODetector | None = None,
+) -> list[ObjectTrackingFrame]:
+    """Run YOLO + ByteTrack on a bounded local webcam or network stream.
+
+    Frame indices count frames received from the stream during this session;
+    timestamps use a monotonic clock and are relative to capture start.
+    """
+    if isinstance(duration_seconds, bool) or not np.isfinite(duration_seconds) or not 1 <= duration_seconds <= 60:
+        raise ValueError("duration_seconds must be between 1 and 60")
+    if isinstance(sample_every_frames, bool) or not isinstance(sample_every_frames, int) or sample_every_frames < 1:
+        raise ValueError("sample_every_frames must be a positive integer")
+    if isinstance(max_samples, bool) or not isinstance(max_samples, int) or max_samples < 1:
+        raise ValueError("max_samples must be a positive integer")
+    if not np.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+        raise ValueError("confidence must be between 0 and 1")
+    if isinstance(image_size, bool) or not isinstance(image_size, int) or image_size < 32:
+        raise ValueError("image_size must be an integer of at least 32")
+
+    if isinstance(source, bool):
+        raise ValueError("source must be a camera index or stream URL")
+    if isinstance(source, int):
+        if source < 0:
+            raise ValueError("camera index must be zero or greater")
+        camera_source: str | int = source
+    else:
+        source_text = str(source).strip()
+        if not source_text:
+            raise ValueError("source must not be empty")
+        if source_text.isdigit():
+            camera_source = int(source_text)
+        elif source_text.startswith(("rtsp://", "rtsps://", "http://", "https://")):
+            camera_source = source_text
+        else:
+            raise ValueError("source must be a camera index or RTSP/HTTP(S) stream URL")
+
+    detector = detector or YOLODetector(weights)
+    detector.reset_tracker()
+    capture = cv2.VideoCapture(camera_source)
+    if not capture.isOpened():
+        capture.release()
+        raise ValueError(
+            f"Could not open camera source: {camera_source if isinstance(camera_source, int) else 'stream URL'}"
+        )
+
+    output: list[ObjectTrackingFrame] = []
+    started = perf_counter()
+    frame_index = 0
+    try:
+        while perf_counter() - started < duration_seconds and len(output) < max_samples:
+            ok, frame = capture.read()
+            if not ok:
+                # Some network cameras briefly drop a frame; avoid a busy loop.
+                import time
+                time.sleep(0.02)
+                continue
+            if frame_index % sample_every_frames == 0:
+                timestamp = perf_counter() - started
+                inference_started = perf_counter()
+                detections = detector.track_frame(
+                    frame, classes=classes, confidence=confidence, image_size=image_size
+                )
+                processing_time_ms = (perf_counter() - inference_started) * 1000.0
+                annotated = frame.copy()
+                for item in detections:
+                    x1, y1 = item.x, item.y
+                    x2, y2 = x1 + item.width, y1 + item.height
+                    cv2.rectangle(annotated, (x1, y1), (x2, y2), (40, 220, 80), 2)
+                    identity = f"ID {item.track_id}" if item.track_id is not None else "ID pending"
+                    label = f"{item.class_name} {identity} {item.confidence:.2f}"
+                    cv2.putText(
+                        annotated, label, (x1, max(20, y1 - 8)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (40, 220, 80), 2, cv2.LINE_AA,
+                    )
+                output.append(ObjectTrackingFrame(
+                    frame_index=frame_index,
+                    timestamp_seconds=timestamp,
+                    inference_time_ms=processing_time_ms,
+                    annotated_frame=annotated,
+                    detections=tuple(detections),
+                ))
+            frame_index += 1
+    finally:
+        capture.release()
+
+    if not output:
+        raise ValueError("No frames received. Check camera permissions, camera index, or stream URL.")
+    return output
