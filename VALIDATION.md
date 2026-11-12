@@ -189,3 +189,12 @@ The included evaluator uses greedy class-aware IoU matching and counts ID change
 - [ ] Compare point counts and inspect both PLY outputs; do not assume fewer points always means better reconstruction.
 - [ ] Record missed detections and static objects incorrectly masked.
 - [ ] Repeat with people/vehicles at different scales and partial occlusion.
+
+
+## 6.10 Translation pose-graph correction
+
+- [ ] Confirm the no-loop-closure path preserves the original trajectory.
+- [ ] Add a known synthetic closure residual and verify correction is distributed while the first pose remains anchored.
+- [ ] Evaluate only with independently verified revisit constraints; compare raw and corrected trajectory error against measured reference positions.
+- [ ] Test multiple loop closures, long trajectories, and outlier constraints before considering a robust loss or full SE(3) optimiser.
+- [ ] Confirm rotations are unchanged and document the translation-only limitation.

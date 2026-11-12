@@ -236,3 +236,21 @@ Do not feed the existing 0–100 image-quality heuristic directly into this prob
 ### Dynamic-object masking for 3D fusion
 
 In **Camera calibration → Stereo visual odometry & 3D fusion**, enable **Mask detected moving objects before 3D fusion** to run the optional YOLO detector on each rectified left-camera frame. ByteTrack IDs are compared across samples, and only tracked boxes whose centers move beyond the configured pixel threshold (default 4 px) are excluded, with an 8-pixel margin. The same regions are excluded from the stereo depth mask used for point-cloud export and from ORB feature extraction in the previous frame used by PnP-RANSAC. Install the optional AI dependencies with `python -m pip install -r requirements-ai.txt`. This assumes a fixed camera rig and reduces contamination from tracked moving objects, but it is not semantic scene understanding: new/untracked objects are not masked, missed detections and partial occlusions remain possible, and camera movement can make static objects appear to move. The default mode remains dependency-free and unchanged.
+
+
+## Translation pose-graph drift correction
+
+The optional blindspot.pose_graph.optimize_pose_graph_translations utility
+refines a short stereo-odometry trajectory when the caller has an independently
+verified loop-closure displacement. It preserves consecutive odometry
+measurements as weighted constraints, distributes loop-closure residual across
+the trajectory with least squares, and anchors the first pose. It changes
+translations only; rotations are not optimised.
+
+A loop closure is supplied as (start_index, end_index, measured_world_delta, weight).
+The measured displacement must come from a trustworthy revisit match or another
+external reference. The function does not discover loop closures, validate
+their correctness, estimate absolute position, or provide full SE(3) SLAM.
+Incorrect constraints can make the trajectory worse. It is intended for short
+trajectories and should be evaluated against measured reference paths before
+being used in any operational setting.
