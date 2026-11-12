@@ -15,11 +15,15 @@ Build the image from the repository root:
 docker build -t blindspot-2 .
 ```
 
-Run the dashboard:
+The Docker image installs only `requirements-runtime.txt`; `requirements.txt` additionally includes pytest for development and CI.
+
+Run the dashboard (bind to localhost by default so it is not exposed to the LAN):
 
 ```bash
-docker run --rm -p 8501:8501 blindspot-2
+docker run --rm --name blindspot-2 -p 127.0.0.1:8501:8501 blindspot-2
 ```
+
+For a server deployment, choose an explicit network binding and firewall rule rather than exposing the dashboard unintentionally. Use a reverse proxy and access control for remote users. The container health check only verifies that Streamlit responds; it does not verify camera connectivity or reconstruction accuracy.
 
 Open http://localhost:8501.
 
@@ -59,3 +63,31 @@ The dashboard's advanced reconstruction workflows are available under
 the image health check validates Streamlit startup, not connected camera access
 or reconstruction accuracy. Camera rig JSON, PLY inputs, and calibration files
 should be retained with the output reports for reproducibility.
+
+
+## Reproducible deployment record
+
+For each deployment, record:
+
+- Git commit SHA and Docker image tag/digest.
+- CI workflow run URL and result for that exact commit.
+- Runtime host, operating system, CPU/RAM limits, and Python/container image.
+- Camera stream type and resolution/FPS (never the credential-bearing URL).
+- Calibration file identifiers and distance units.
+- Benchmark input identifiers and output reports.
+
+Do not include RTSP passwords, access tokens, private camera URLs, or personal footage in public logs or release artifacts.
+
+
+## Docker Compose
+
+A local Compose configuration is provided for repeatable startup:
+
+```bash
+docker compose up --build -d
+docker compose ps
+docker compose logs -f
+docker compose down
+```
+
+The default Compose port is bound to localhost only. Change the host binding deliberately if remote access is required, and put authentication/firewall controls in front of any remote deployment.
