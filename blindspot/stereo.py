@@ -153,3 +153,118 @@ def calibrate_stereo_cameras(
         rejected_pairs=rejected,
         translation_unit=translation_unit,
     )
+
+
+@dataclass(frozen=True)
+class StereoDepthResult:
+    rectified_a: np.ndarray
+    rectified_b: np.ndarray
+    disparity_pixels: np.ndarray
+    depth_map: np.ndarray
+    valid_mask: np.ndarray
+    translation_unit: str
+
+
+def load_stereo_calibration_json(content: str) -> StereoCalibration:
+    """Load and validate relative camera pose from JSON text."""
+    try:
+        data = json.loads(content)
+        calibration = StereoCalibration(**data)
+        rotation = np.asarray(calibration.rotation_matrix, dtype=float)
+        translation = np.asarray(calibration.translation_vector, dtype=float)
+        essential = np.asarray(calibration.essential_matrix, dtype=float)
+        fundamental = np.asarray(calibration.fundamental_matrix, dtype=float)
+    except (TypeError, ValueError, KeyError, json.JSONDecodeError) as exc:
+        raise ValueError("invalid stereo calibration JSON") from exc
+    if (
+        rotation.shape != (3, 3) or translation.size != 3
+        or essential.shape != (3, 3) or fundamental.shape != (3, 3)
+        or not all(np.isfinite(x).all() for x in (rotation, translation, essential, fundamental))
+        or calibration.image_width < 1 or calibration.image_height < 1
+        or not calibration.translation_unit.strip()
+    ):
+        raise ValueError("stereo calibration JSON contains invalid parameters")
+    return calibration
+
+
+def rectify_and_compute_depth(
+    image_a: np.ndarray,
+    image_b: np.ndarray,
+    intrinsics_a: CameraCalibration,
+    intrinsics_b: CameraCalibration,
+    stereo: StereoCalibration,
+    num_disparities: int = 128,
+    block_size: int = 5,
+) -> StereoDepthResult:
+    """Rectify a calibrated stereo pair and estimate disparity/depth with SGBM.
+
+    Depth values use the translation unit stored in the stereo calibration
+    (which should match the chessboard square-size unit).
+    """
+    for label, image in (("image_a", image_a), ("image_b", image_b)):
+        if not isinstance(image, np.ndarray) or image.size == 0:
+            raise ValueError(f"{label} must be a non-empty NumPy image")
+        if image.dtype != np.uint8:
+            raise ValueError(f"{label} must use uint8 pixel values")
+        if image.ndim not in (2, 3) or (image.ndim == 3 and image.shape[2] not in (3, 4)):
+            raise ValueError(f"{label} must be grayscale, BGR, or BGRA")
+
+    expected_size = (stereo.image_width, stereo.image_height)
+    if (image_a.shape[1], image_a.shape[0]) != expected_size or (image_b.shape[1], image_b.shape[0]) != expected_size:
+        raise ValueError("both images must match the stereo calibration resolution")
+    if (intrinsics_a.image_width, intrinsics_a.image_height) != expected_size:
+        raise ValueError("camera A intrinsics do not match stereo calibration resolution")
+    if (intrinsics_b.image_width, intrinsics_b.image_height) != expected_size:
+        raise ValueError("camera B intrinsics do not match stereo calibration resolution")
+    if isinstance(num_disparities, bool) or not isinstance(num_disparities, int) or num_disparities < 16 or num_disparities % 16:
+        raise ValueError("num_disparities must be a positive multiple of 16")
+    if isinstance(block_size, bool) or not isinstance(block_size, int) or block_size < 3 or block_size % 2 == 0:
+        raise ValueError("block_size must be an odd integer >= 3")
+
+    matrix_a = np.asarray(intrinsics_a.camera_matrix, dtype=np.float64)
+    dist_a = np.asarray(intrinsics_a.distortion_coefficients, dtype=np.float64)
+    matrix_b = np.asarray(intrinsics_b.camera_matrix, dtype=np.float64)
+    dist_b = np.asarray(intrinsics_b.distortion_coefficients, dtype=np.float64)
+    rotation = np.asarray(stereo.rotation_matrix, dtype=np.float64)
+    translation = np.asarray(stereo.translation_vector, dtype=np.float64).reshape(3, 1)
+    if matrix_a.shape != (3, 3) or matrix_b.shape != (3, 3) or rotation.shape != (3, 3):
+        raise ValueError("camera or stereo matrices have invalid dimensions")
+
+    size = expected_size
+    rect_a, rect_b, projection_a, projection_b, q_matrix, _, _ = cv2.stereoRectify(
+        matrix_a, dist_a, matrix_b, dist_b, size, rotation, translation,
+        flags=cv2.CALIB_ZERO_DISPARITY, alpha=0,
+    )
+    map_ax, map_ay = cv2.initUndistortRectifyMap(
+        matrix_a, dist_a, rect_a, projection_a, size, cv2.CV_32FC1
+    )
+    map_bx, map_by = cv2.initUndistortRectifyMap(
+        matrix_b, dist_b, rect_b, projection_b, size, cv2.CV_32FC1
+    )
+    rectified_a = cv2.remap(image_a, map_ax, map_ay, cv2.INTER_LINEAR)
+    rectified_b = cv2.remap(image_b, map_bx, map_by, cv2.INTER_LINEAR)
+    gray_a = cv2.cvtColor(rectified_a, cv2.COLOR_BGR2GRAY) if rectified_a.ndim == 3 else rectified_a
+    gray_b = cv2.cvtColor(rectified_b, cv2.COLOR_BGR2GRAY) if rectified_b.ndim == 3 else rectified_b
+
+    matcher = cv2.StereoSGBM_create(
+        minDisparity=0,
+        numDisparities=num_disparities,
+        blockSize=block_size,
+        P1=8 * block_size * block_size,
+        P2=32 * block_size * block_size,
+        disp12MaxDiff=1,
+        uniquenessRatio=10,
+        speckleWindowSize=100,
+        speckleRange=2,
+        mode=cv2.STEREO_SGBM_MODE_SGBM_3WAY,
+    )
+    disparity = matcher.compute(gray_a, gray_b).astype(np.float32) / 16.0
+    valid = np.isfinite(disparity) & (disparity > 0)
+    points_3d = cv2.reprojectImageTo3D(disparity, q_matrix)
+    depth = points_3d[:, :, 2].astype(np.float32)
+    valid &= np.isfinite(depth) & (depth > 0)
+    depth[~valid] = np.nan
+
+    return StereoDepthResult(
+        rectified_a, rectified_b, disparity, depth, valid, stereo.translation_unit
+    )
