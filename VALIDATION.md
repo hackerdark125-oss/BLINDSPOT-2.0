@@ -179,3 +179,13 @@ The included evaluator uses greedy class-aware IoU matching and counts ID change
 - [ ] Compare Brier score, log loss, ECE, and reliability bins on held-out data before/after calibration.
 - [ ] Retain the held-out sample count and label-generation rubric with every report.
 - [ ] Repeat on different scenes, lighting, camera distances, and motion conditions; do not generalise from one split.
+
+
+## 6.9 Optional dynamic-object masking in stereo 3D fusion
+
+- [ ] Install optional AI dependencies from `requirements-ai.txt` and verify YOLO weights are available.
+- [ ] Run the same stereo clip once with masking disabled and once enabled.
+- [ ] Confirm only tracked objects whose centers move beyond the configured pixel threshold are excluded from the point-cloud depth mask and previous-frame PnP feature mask.
+- [ ] Compare point counts and inspect both PLY outputs; do not assume fewer points always means better reconstruction.
+- [ ] Record missed detections and static objects incorrectly masked.
+- [ ] Repeat with people/vehicles at different scales and partial occlusion.

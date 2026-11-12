@@ -23,7 +23,8 @@ from blindspot.stereo import (
 from blindspot.coverage import load_camera_pose_json, estimate_stereo_planar_coverage
 from blindspot.reconstruction import (
     depth_to_point_cloud, write_ply, estimate_stereo_visual_motion,
-    compose_camera_to_world_pose, fuse_point_clouds,
+    compose_camera_to_world_pose, fuse_point_clouds, exclude_detection_regions,
+    select_moving_detection_regions,
 )
 from blindspot.uncertainty import (
     evaluate_calibration, fit_isotonic_calibrator, apply_isotonic_calibrator,
@@ -877,6 +878,19 @@ else:
         with v3:
             vo_stride = st.select_slider("Point-cloud pixel stride", options=[2, 3, 4, 6, 8], value=4, key="vo_stride")
         vo_voxel = st.number_input("Voxel averaging size (stereo distance units)", min_value=0.001, value=1.0, step=0.1, key="vo_voxel")
+        vo_remove_dynamic = st.checkbox(
+            "Filter tracked moving objects before 3D fusion (optional YOLO + ByteTrack)",
+            value=False, key="vo_remove_dynamic",
+            help="Requires requirements-ai.txt. Only objects with persistent ByteTrack IDs that move beyond the pixel threshold are masked; new/untracked objects are not classified as moving."
+        )
+        vo_ai_weights = st.selectbox(
+            "Dynamic-object detector weights", ["yolo11n.pt", "yolo11s.pt"],
+            disabled=not vo_remove_dynamic, key="vo_dynamic_weights",
+        )
+        vo_motion_threshold = st.slider(
+            "Minimum track movement to mask (pixels)", 1.0, 20.0, 4.0, 1.0,
+            disabled=not vo_remove_dynamic, key="vo_motion_threshold",
+        )
         ready_vo = bool(vo_video_a and vo_video_b and vo_intrinsics_a and vo_intrinsics_b and vo_stereo_json)
         if st.button("Run stereo visual odometry & fuse 3D scene", type="primary", disabled=not ready_vo):
             capture_a = capture_b = None
@@ -885,6 +899,9 @@ else:
                 calibration_a = load_calibration_json(vo_intrinsics_a.getvalue().decode("utf-8"))
                 calibration_b = load_calibration_json(vo_intrinsics_b.getvalue().decode("utf-8"))
                 stereo = load_stereo_calibration_json(vo_stereo_json.getvalue().decode("utf-8"))
+                dynamic_detector = get_yolo_detector(vo_ai_weights) if vo_remove_dynamic else None
+                if dynamic_detector is not None:
+                    dynamic_detector.reset_tracker()
                 for upload in (vo_video_a, vo_video_b):
                     suffix = Path(upload.name).suffix or ".mp4"
                     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
@@ -903,9 +920,10 @@ else:
                 if abs(duration_a - duration_b) > max(vo_interval, 0.5):
                     st.warning("Video durations differ. Sampling will stop when either stream ends.")
                 local_clouds, world_poses, trajectory = [], [], []
-                previous_frame = previous_depth = None
+                previous_frame = previous_depth = previous_valid_mask = None
                 world_rotation, world_translation = np.eye(3), np.zeros(3)
-                processed, skipped = 0, 0
+                processed, skipped, masked_detections = 0, 0, 0
+                previous_track_centers = {}
                 progress = st.progress(0.0)
                 status = st.empty()
                 for sample_index in range(int(vo_limit)):
@@ -925,6 +943,22 @@ else:
                         if int(depth_result.valid_mask.sum()) < 100:
                             skipped += 1
                             continue
+                        frame_valid_mask = depth_result.valid_mask.copy()
+                        if dynamic_detector is not None:
+                            tracked_boxes = dynamic_detector.track_frame(
+                                depth_result.rectified_a, confidence=0.25, image_size=640
+                            )
+                            moving_boxes, previous_track_centers = select_moving_detection_regions(
+                                tracked_boxes, previous_track_centers,
+                                min_displacement_pixels=float(vo_motion_threshold),
+                            )
+                            masked_detections += len(moving_boxes)
+                            frame_valid_mask = exclude_detection_regions(
+                                frame_valid_mask, moving_boxes, padding=8,
+                            )
+                        if int(frame_valid_mask.sum()) < 100:
+                            skipped += 1
+                            continue
                         rectified_k = (
                             depth_result.rectified_camera_matrix
                             if depth_result.rectified_camera_matrix is not None
@@ -934,7 +968,7 @@ else:
                             local_cloud = depth_to_point_cloud(
                                 depth_result.depth_map, rectified_k,
                                 color_image=depth_result.rectified_a,
-                                valid_mask=depth_result.valid_mask, stride=int(vo_stride),
+                                valid_mask=frame_valid_mask, stride=int(vo_stride),
                             )
                             if len(local_cloud) == 0:
                                 skipped += 1
@@ -948,11 +982,13 @@ else:
                             })
                             previous_frame = depth_result.rectified_a
                             previous_depth = depth_result.depth_map
+                            previous_valid_mask = frame_valid_mask
                             processed += 1
                         else:
                             motion = estimate_stereo_visual_motion(
                                 previous_frame, depth_result.rectified_a, previous_depth,
                                 rectified_k, min_inliers=8,
+                                previous_valid_mask=previous_valid_mask,
                             )
                             candidate_rotation, candidate_translation = compose_camera_to_world_pose(
                                 world_rotation, world_translation,
@@ -961,7 +997,7 @@ else:
                             local_cloud = depth_to_point_cloud(
                                 depth_result.depth_map, rectified_k,
                                 color_image=depth_result.rectified_a,
-                                valid_mask=depth_result.valid_mask, stride=int(vo_stride),
+                                valid_mask=frame_valid_mask, stride=int(vo_stride),
                             )
                             if len(local_cloud) == 0:
                                 skipped += 1
@@ -978,6 +1014,7 @@ else:
                             })
                             previous_frame = depth_result.rectified_a
                             previous_depth = depth_result.depth_map
+                            previous_valid_mask = frame_valid_mask
                             processed += 1
                     except Exception as frame_exc:
                         skipped += 1
@@ -996,6 +1033,9 @@ else:
                     m1.metric("Frames reconstructed", processed)
                     m2.metric("Frames skipped", skipped)
                     m3.metric("Fused 3D points", f"{len(fused):,}")
+                    if dynamic_detector is not None:
+                        st.metric("Detected object regions masked", masked_detections)
+                        st.caption("Only tracked objects moving beyond the selected image-space threshold are masked. This assumes a fixed camera rig; missed detections and camera movement can still cause errors.")
                     st.dataframe(pd.DataFrame(trajectory), use_container_width=True, hide_index=True)
                     st.download_button(
                         "Download fused multi-frame 3D scene (PLY)", ply_bytes,

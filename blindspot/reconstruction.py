@@ -157,6 +157,80 @@ def estimate_visual_motion(
     )
 
 
+def select_moving_detection_regions(
+    detections: list[Any] | tuple[Any, ...],
+    previous_centers: dict[int, tuple[float, float]],
+    min_displacement_pixels: float = 4.0,
+) -> tuple[list[tuple[int, int, int, int]], dict[int, tuple[float, float]]]:
+    """Select tracked detections whose centers moved enough since the last sample.
+
+    Detections without a ByteTrack ID are ignored because motion cannot be
+    distinguished from a new/static object without persistent identity.
+    """
+    if not np.isfinite(min_displacement_pixels) or min_displacement_pixels < 0:
+        raise ValueError("min_displacement_pixels must be non-negative and finite")
+    if not isinstance(previous_centers, dict):
+        raise ValueError("previous_centers must be a dictionary")
+    centers = dict(previous_centers)
+    moving_boxes: list[tuple[int, int, int, int]] = []
+    for item in detections:
+        track_id = getattr(item, "track_id", None)
+        if track_id is None:
+            continue
+        if isinstance(track_id, bool) or not isinstance(track_id, (int, np.integer)):
+            raise ValueError("detection track_id must be an integer or None")
+        x, y = getattr(item, "x", None), getattr(item, "y", None)
+        width, height = getattr(item, "width", None), getattr(item, "height", None)
+        values = (x, y, width, height)
+        if any(isinstance(value, bool) or not isinstance(value, (int, np.integer)) for value in values):
+            raise ValueError("detection boxes must contain integer x, y, width, and height")
+        if width <= 0 or height <= 0:
+            raise ValueError("detection box dimensions must be positive")
+        center = (float(x) + float(width) / 2.0, float(y) + float(height) / 2.0)
+        old_center = centers.get(int(track_id))
+        if old_center is not None:
+            displacement = float(np.hypot(center[0] - old_center[0], center[1] - old_center[1]))
+            if displacement >= float(min_displacement_pixels):
+                moving_boxes.append((int(x), int(y), int(width), int(height)))
+        centers[int(track_id)] = center
+    return moving_boxes, centers
+
+
+def exclude_detection_regions(
+    valid_mask: np.ndarray,
+    boxes: list[tuple[int, int, int, int]] | tuple[tuple[int, int, int, int], ...],
+    padding: int = 6,
+) -> np.ndarray:
+    """Return a copy of a boolean depth mask with detected object boxes removed.
+
+    Boxes are (x, y, width, height) in image pixels. Padding expands each
+    region to reduce dynamic-object boundary leakage into stereo VO and fusion.
+    """
+    mask = np.asarray(valid_mask)
+    if mask.ndim != 2 or mask.size == 0 or mask.dtype != np.bool_:
+        raise ValueError("valid_mask must be a non-empty 2D boolean array")
+    if isinstance(padding, bool) or not isinstance(padding, int) or padding < 0:
+        raise ValueError("padding must be a non-negative integer")
+    output = mask.copy()
+    height, width = output.shape
+    for box in boxes:
+        if not isinstance(box, (tuple, list)) or len(box) != 4:
+            raise ValueError("each box must be an (x, y, width, height) tuple")
+        x, y, box_width, box_height = box
+        values = (x, y, box_width, box_height)
+        if any(isinstance(value, bool) or not isinstance(value, (int, np.integer)) for value in values):
+            raise ValueError("box coordinates must be integers")
+        if box_width <= 0 or box_height <= 0:
+            raise ValueError("box width and height must be positive")
+        x1 = max(0, int(x) - padding)
+        y1 = max(0, int(y) - padding)
+        x2 = min(width, int(x) + int(box_width) + padding)
+        y2 = min(height, int(y) + int(box_height) + padding)
+        if x1 < x2 and y1 < y2:
+            output[y1:y2, x1:x2] = False
+    return output
+
+
 @dataclass(frozen=True)
 class StereoVisualMotion:
     """Metric relative pose from previous camera coordinates to current coordinates."""
@@ -176,6 +250,7 @@ def estimate_stereo_visual_motion(
     min_inliers: int = 8,
     max_features: int = 3000,
     reprojection_error: float = 2.0,
+    previous_valid_mask: np.ndarray | None = None,
 ) -> StereoVisualMotion:
     """Estimate metric frame-to-frame motion using previous-frame stereo depth.
 
@@ -193,6 +268,10 @@ def estimate_stereo_visual_motion(
     depth = np.asarray(previous_depth, dtype=np.float64)
     if depth.shape != previous_frame.shape[:2]:
         raise ValueError("previous_depth must match the previous frame dimensions")
+    if previous_valid_mask is not None:
+        previous_valid_mask = np.asarray(previous_valid_mask)
+        if previous_valid_mask.shape != depth.shape or previous_valid_mask.dtype != np.bool_:
+            raise ValueError("previous_valid_mask must be boolean and match previous_depth")
     matrix = np.asarray(camera_matrix, dtype=np.float64)
     if matrix.shape != (3, 3) or not np.isfinite(matrix).all() or matrix[0, 0] <= 0 or matrix[1, 1] <= 0:
         raise ValueError("camera_matrix must be finite 3x3 with positive focal lengths")
@@ -209,7 +288,8 @@ def estimate_stereo_visual_motion(
         return cv2.cvtColor(frame[:, :, :3], cv2.COLOR_BGR2GRAY)
 
     detector = cv2.ORB_create(nfeatures=max_features)
-    key_a, desc_a = detector.detectAndCompute(grayscale(previous_frame), None)
+    feature_mask = None if previous_valid_mask is None else previous_valid_mask.astype(np.uint8) * 255
+    key_a, desc_a = detector.detectAndCompute(grayscale(previous_frame), feature_mask)
     key_b, desc_b = detector.detectAndCompute(grayscale(current_frame), None)
     if desc_a is None or desc_b is None:
         raise ValueError("insufficient visual features for stereo visual odometry")

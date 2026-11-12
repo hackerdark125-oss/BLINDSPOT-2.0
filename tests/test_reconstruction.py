@@ -82,3 +82,85 @@ def test_stereo_visual_odometry_rejects_depth_shape_mismatch():
     frame = np.zeros((20, 20), dtype=np.uint8)
     with pytest.raises(ValueError, match="match the previous frame"):
         estimate_stereo_visual_motion(frame, frame, np.ones((10, 10)), np.eye(3))
+
+
+def test_exclude_detection_regions_masks_boxes_with_padding_and_clipping():
+    from blindspot.reconstruction import exclude_detection_regions
+
+    valid = np.ones((10, 12), dtype=bool)
+    masked = exclude_detection_regions(valid, [(2, 3, 4, 3)], padding=1)
+    assert masked.sum() == valid.sum() - (6 * 5)
+    assert not masked[2:7, 1:7].any()
+    assert valid.all()  # input mask is not mutated
+
+
+def test_exclude_detection_regions_clips_boxes_at_image_edges():
+    from blindspot.reconstruction import exclude_detection_regions
+
+    valid = np.ones((5, 5), dtype=bool)
+    masked = exclude_detection_regions(valid, [(-3, -2, 5, 4)], padding=1)
+    assert not masked[:3, :3].any()
+    assert masked[4, 4]
+
+
+def test_exclude_detection_regions_validates_inputs():
+    from blindspot.reconstruction import exclude_detection_regions
+
+    with pytest.raises(ValueError, match="boolean"):
+        exclude_detection_regions(np.ones((4, 4), dtype=np.uint8), [])
+    with pytest.raises(ValueError, match="positive"):
+        exclude_detection_regions(np.ones((4, 4), dtype=bool), [(1, 1, 0, 2)])
+    with pytest.raises(ValueError, match="padding"):
+        exclude_detection_regions(np.ones((4, 4), dtype=bool), [], padding=-1)
+
+
+
+def test_stereo_visual_odometry_validates_previous_feature_mask():
+    frame = np.zeros((20, 20), dtype=np.uint8)
+    with pytest.raises(ValueError, match="previous_valid_mask"):
+        estimate_stereo_visual_motion(
+            frame, frame, np.ones((20, 20)), np.eye(3),
+            previous_valid_mask=np.ones((10, 10), dtype=bool),
+        )
+    with pytest.raises(ValueError, match="previous_valid_mask"):
+        estimate_stereo_visual_motion(
+            frame, frame, np.ones((20, 20)), np.eye(3),
+            previous_valid_mask=np.ones((20, 20), dtype=np.uint8),
+        )
+
+
+def test_select_moving_detection_regions_requires_track_motion():
+    from types import SimpleNamespace
+    from blindspot.reconstruction import select_moving_detection_regions
+
+    first = SimpleNamespace(track_id=7, x=10, y=10, width=10, height=10)
+    boxes, centers = select_moving_detection_regions([first], {})
+    assert boxes == []
+    second = SimpleNamespace(track_id=7, x=16, y=10, width=10, height=10)
+    boxes, centers = select_moving_detection_regions([second], centers, min_displacement_pixels=4)
+    assert boxes == [(16, 10, 10, 10)]
+
+
+def test_select_moving_detection_regions_ignores_untracked_and_static_objects():
+    from types import SimpleNamespace
+    from blindspot.reconstruction import select_moving_detection_regions
+
+    previous = {3: (20.0, 20.0)}
+    detections = [
+        SimpleNamespace(track_id=3, x=15, y=15, width=10, height=10),
+        SimpleNamespace(track_id=None, x=50, y=50, width=10, height=10),
+    ]
+    boxes, centers = select_moving_detection_regions(detections, previous, min_displacement_pixels=4)
+    assert boxes == []
+    assert 3 in centers
+
+
+def test_select_moving_detection_regions_validates_threshold_and_boxes():
+    from blindspot.reconstruction import select_moving_detection_regions
+
+    with pytest.raises(ValueError, match="min_displacement"):
+        select_moving_detection_regions([], {}, min_displacement_pixels=-1)
+    from types import SimpleNamespace
+    bad = SimpleNamespace(track_id=1, x=0, y=0, width=0, height=4)
+    with pytest.raises(ValueError, match="dimensions"):
+        select_moving_detection_regions([bad], {})
