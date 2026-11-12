@@ -93,9 +93,12 @@ def apply_isotonic_calibrator(scores: Iterable[float], calibrator: Mapping) -> l
         score = float(raw)
         if not 0.0 <= score <= 1.0:
             raise ValueError("scores must be in [0, 1]")
-        selected = next((b for b in blocks if b["min_score"] <= score <= b["max_score"]), None)
-        if selected is None:
-            selected = blocks[0] if score < blocks[0]["min_score"] else blocks[-1]
+        selected = blocks[-1]
+        for index, block in enumerate(blocks[:-1]):
+            boundary = (float(block["max_score"]) + float(blocks[index + 1]["min_score"])) / 2.0
+            if score <= boundary:
+                selected = block
+                break
         value = float(selected["calibrated_confidence"])
         if not 0.0 <= value <= 1.0:
             raise ValueError("calibrator contains invalid calibrated confidence")
