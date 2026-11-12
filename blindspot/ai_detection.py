@@ -1,0 +1,185 @@
+"""Modern YOLO object detection with Ultralytics ByteTrack video tracking.
+
+Ultralytics is an optional dependency. Install requirements-ai.txt to enable this
+module. Model weights are downloaded by Ultralytics on first use and cached locally.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Sequence
+
+import cv2
+import numpy as np
+
+
+@dataclass(frozen=True)
+class ObjectDetection:
+    track_id: int | None
+    class_id: int
+    class_name: str
+    confidence: float
+    x: int
+    y: int
+    width: int
+    height: int
+
+
+@dataclass(frozen=True)
+class ObjectTrackingFrame:
+    timestamp_seconds: float
+    annotated_frame: np.ndarray
+    detections: tuple[ObjectDetection, ...]
+
+
+class YOLODetector:
+    """YOLO object detector whose persistent track IDs are assigned by ByteTrack."""
+
+    def __init__(self, weights: str = "yolo11n.pt", model: Any | None = None) -> None:
+        if not isinstance(weights, str) or not weights.strip():
+            raise ValueError("weights must be a non-empty model name or path")
+        if model is None:
+            try:
+                from ultralytics import YOLO
+            except ImportError as exc:
+                raise ImportError(
+                    "Modern AI detection requires the optional dependencies. "
+                    "Install them with: pip install -r requirements-ai.txt"
+                ) from exc
+            model = YOLO(weights)
+        self.weights = weights
+        self.model = model
+
+    def track_frame(
+        self,
+        frame: np.ndarray,
+        classes: Sequence[int] | None = None,
+        confidence: float = 0.25,
+        image_size: int = 640,
+    ) -> list[ObjectDetection]:
+        if not isinstance(frame, np.ndarray) or frame.size == 0:
+            raise ValueError("frame must be a non-empty NumPy image")
+        if frame.dtype != np.uint8 or frame.ndim != 3 or frame.shape[2] != 3:
+            raise ValueError("frame must be a uint8 three-channel BGR image")
+        if not np.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+            raise ValueError("confidence must be between 0 and 1")
+        if isinstance(image_size, bool) or not isinstance(image_size, int) or image_size < 32:
+            raise ValueError("image_size must be an integer of at least 32")
+        if classes is not None:
+            if any(isinstance(item, bool) or not isinstance(item, int) or item < 0 for item in classes):
+                raise ValueError("class IDs must be non-negative integers")
+
+        results = self.model.track(
+            source=frame,
+            persist=True,
+            tracker="bytetrack.yaml",
+            classes=list(classes) if classes else None,
+            conf=float(confidence),
+            imgsz=image_size,
+            verbose=False,
+        )
+        if not results:
+            return []
+        result = results[0]
+        boxes = getattr(result, "boxes", None)
+        if boxes is None or len(boxes) == 0:
+            return []
+
+        xyxy = boxes.xyxy.cpu().numpy()
+        class_ids = boxes.cls.cpu().numpy().astype(int)
+        scores = boxes.conf.cpu().numpy()
+        raw_ids = getattr(boxes, "id", None)
+        track_ids = raw_ids.cpu().numpy().astype(int) if raw_ids is not None else None
+        names = getattr(result, "names", {})
+        height, width = frame.shape[:2]
+        detections: list[ObjectDetection] = []
+        for index, coordinates in enumerate(xyxy):
+            x1, y1, x2, y2 = map(int, coordinates)
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(width, x2), min(height, y2)
+            if x2 <= x1 or y2 <= y1:
+                continue
+            class_id = int(class_ids[index])
+            if isinstance(names, dict):
+                class_name = str(names.get(class_id, f"class_{class_id}"))
+            elif isinstance(names, (list, tuple)) and class_id < len(names):
+                class_name = str(names[class_id])
+            else:
+                class_name = f"class_{class_id}"
+            detections.append(ObjectDetection(
+                track_id=int(track_ids[index]) if track_ids is not None else None,
+                class_id=class_id,
+                class_name=class_name,
+                confidence=float(scores[index]),
+                x=x1, y=y1, width=x2 - x1, height=y2 - y1,
+            ))
+        return detections
+
+
+def process_video(
+    path: str,
+    sample_every_frames: int = 3,
+    max_samples: int = 120,
+    weights: str = "yolo11n.pt",
+    classes: Sequence[int] | None = None,
+    confidence: float = 0.25,
+    image_size: int = 640,
+    detector: YOLODetector | None = None,
+) -> list[ObjectTrackingFrame]:
+    """Run YOLO + persistent ByteTrack on sampled frames of a video."""
+    if not str(path).strip():
+        raise ValueError("video path must not be empty")
+    if isinstance(sample_every_frames, bool) or not isinstance(sample_every_frames, int) or sample_every_frames < 1:
+        raise ValueError("sample_every_frames must be a positive integer")
+    if isinstance(max_samples, bool) or not isinstance(max_samples, int) or max_samples < 1:
+        raise ValueError("max_samples must be a positive integer")
+    if not np.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+        raise ValueError("confidence must be between 0 and 1")
+    if not isinstance(image_size, int) or isinstance(image_size, bool) or image_size < 32:
+        raise ValueError("image_size must be an integer of at least 32")
+
+    video_path = Path(path)
+    if not video_path.exists():
+        raise ValueError(f"Video does not exist: {path}")
+    detector = detector or YOLODetector(weights)
+    capture = cv2.VideoCapture(str(video_path))
+    if not capture.isOpened():
+        capture.release()
+        raise ValueError(f"Could not open video: {path}")
+    fps = capture.get(cv2.CAP_PROP_FPS)
+    if not np.isfinite(fps) or fps <= 0:
+        fps = 25.0
+
+    output: list[ObjectTrackingFrame] = []
+    frame_index = 0
+    try:
+        while len(output) < max_samples:
+            ok, frame = capture.read()
+            if not ok:
+                break
+            if frame_index % sample_every_frames == 0:
+                detections = detector.track_frame(
+                    frame, classes=classes, confidence=confidence, image_size=image_size
+                )
+                annotated = frame.copy()
+                for item in detections:
+                    x1, y1 = item.x, item.y
+                    x2, y2 = x1 + item.width, y1 + item.height
+                    cv2.rectangle(annotated, (x1, y1), (x2, y2), (40, 220, 80), 2)
+                    identity = f"ID {item.track_id}" if item.track_id is not None else "ID pending"
+                    label = f"{item.class_name} {identity} {item.confidence:.2f}"
+                    cv2.putText(
+                        annotated, label, (x1, max(20, y1 - 8)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (40, 220, 80), 2, cv2.LINE_AA,
+                    )
+                output.append(ObjectTrackingFrame(
+                    timestamp_seconds=frame_index / fps,
+                    annotated_frame=annotated,
+                    detections=tuple(detections),
+                ))
+            frame_index += 1
+    finally:
+        capture.release()
+    if not output:
+        raise ValueError("No readable frames were found in this video")
+    return output
