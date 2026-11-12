@@ -1445,7 +1445,7 @@ else:
         )
         auto_register = st.checkbox(
             "Refine camera alignment with ICP before fusion",
-            value=False, key="multicam_auto_icp", disabled=not bool(multi_cloud_files),
+            value=False, key="multicam_auto_icp", disabled=len(multi_cloud_files or []) < 2,
             help="Uses overlapping clouds and the supplied poses as an initial alignment. ICP is local and may converge incorrectly.",
         )
         if auto_register:
