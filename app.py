@@ -19,6 +19,7 @@ from blindspot.stereo import (
     calibrate_stereo_cameras, load_stereo_calibration_json,
     rectify_and_compute_depth,
 )
+from blindspot.coverage import load_camera_pose_json, estimate_stereo_planar_coverage
 
 
 @st.cache_resource(show_spinner=False)
@@ -476,7 +477,7 @@ else:
     st.subheader("Camera calibration")
     calibration_mode = st.radio(
         "Calibration workflow",
-        ["Single-camera intrinsics", "Two-camera stereo extrinsics", "Stereo depth preview"],
+        ["Single-camera intrinsics", "Two-camera stereo extrinsics", "Stereo depth preview", "Planar coverage preview"],
         horizontal=True,
     )
     if calibration_mode == "Single-camera intrinsics":
@@ -631,7 +632,7 @@ else:
                     st.error(f"Stereo calibration failed: {exc}")
 
 
-    else:
+    elif calibration_mode == "Stereo depth preview":
         st.write(
             "Upload calibrated camera intrinsics, stereo extrinsics, and a synchronized "
             "image pair. The app rectifies the pair and estimates disparity/depth with SGBM."
@@ -731,6 +732,89 @@ else:
                     )
             except Exception as exc:
                 st.error(f"Stereo depth estimation failed: {exc}")
+
+    else:
+        st.write(
+            "Estimate where two calibrated cameras project onto a known horizontal plane. "
+            "This requires stereo calibration plus camera A's camera-to-world pose."
+        )
+        st.warning(
+            "This is a planar geometric footprint only, not 3D reconstruction or proof of "
+            "visibility. Camera pose, plane height, and stereo translation must use the same "
+            "world coordinate frame and distance unit."
+        )
+        col_a, col_b = st.columns(2)
+        with col_a:
+            coverage_intrinsics_a = st.file_uploader(
+                "Camera A intrinsics JSON", type=["json"], key="coverage_intrinsics_a"
+            )
+            coverage_pose_a = st.file_uploader(
+                "Camera A to-world pose JSON", type=["json"], key="coverage_pose_a"
+            )
+        with col_b:
+            coverage_intrinsics_b = st.file_uploader(
+                "Camera B intrinsics JSON", type=["json"], key="coverage_intrinsics_b"
+            )
+            coverage_stereo = st.file_uploader(
+                "Stereo extrinsics JSON", type=["json"], key="coverage_stereo"
+            )
+        plane_z = st.number_input("World ground-plane Z", value=0.0, step=0.1)
+        coverage_grid_size = st.slider(
+            "Coverage map resolution", min_value=32, max_value=256, value=128, step=16
+        )
+        ready_coverage = bool(
+            coverage_intrinsics_a and coverage_intrinsics_b and coverage_pose_a and coverage_stereo
+        )
+        if st.button("Estimate planar camera coverage", type="primary", disabled=not ready_coverage):
+            try:
+                calibration_a = load_calibration_json(coverage_intrinsics_a.getvalue().decode("utf-8"))
+                calibration_b = load_calibration_json(coverage_intrinsics_b.getvalue().decode("utf-8"))
+                stereo = load_stereo_calibration_json(coverage_stereo.getvalue().decode("utf-8"))
+                pose_a = load_camera_pose_json(coverage_pose_a.getvalue().decode("utf-8"))
+                with st.spinner("Projecting image footprints onto the selected world plane..."):
+                    coverage_result = estimate_stereo_planar_coverage(
+                        calibration_a, calibration_b, stereo, pose_a,
+                        plane_z=float(plane_z), grid_size=int(coverage_grid_size),
+                    )
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Camera A footprint", f"{coverage_result.camera_a_area:.2f} {stereo.translation_unit}²")
+                m2.metric("Camera B footprint", f"{coverage_result.camera_b_area:.2f} {stereo.translation_unit}²")
+                m3.metric("Overlap area", f"{coverage_result.overlap_area:.2f} {stereo.translation_unit}²")
+                m4.metric("Combined area", f"{coverage_result.union_area:.2f} {stereo.translation_unit}²")
+                coverage_figure = px.imshow(
+                    coverage_result.coverage_count_map,
+                    x=np.linspace(coverage_result.x_min, coverage_result.x_max, coverage_result.coverage_count_map.shape[1]),
+                    y=np.linspace(coverage_result.y_max, coverage_result.y_min, coverage_result.coverage_count_map.shape[0]),
+                    origin="upper",
+                    labels={"x": f"World X ({stereo.translation_unit})", "y": f"World Y ({stereo.translation_unit})", "color": "Camera count"},
+                    title="Planar camera footprint overlap (0, 1, or 2 cameras)",
+                )
+                coverage_figure.update_layout(height=500, yaxis_scaleanchor="x")
+                st.plotly_chart(coverage_figure, use_container_width=True)
+                st.download_button(
+                    "Download planar coverage grid (CSV)",
+                    pd.DataFrame(coverage_result.coverage_count_map).to_csv(index=False).encode("utf-8"),
+                    file_name="blindspot_planar_coverage_grid.csv", mime="text/csv",
+                )
+                coverage_summary = {
+                    "distance_unit": stereo.translation_unit,
+                    "plane_z": coverage_result.plane_z,
+                    "camera_a_area": coverage_result.camera_a_area,
+                    "camera_b_area": coverage_result.camera_b_area,
+                    "overlap_area": coverage_result.overlap_area,
+                    "union_area": coverage_result.union_area,
+                    "camera_a_polygon_xy": coverage_result.polygon_a.tolist(),
+                    "camera_b_polygon_xy": coverage_result.polygon_b.tolist(),
+                    "grid_resolution": int(coverage_grid_size),
+                }
+                st.download_button(
+                    "Download planar coverage summary (JSON)",
+                    __import__("json").dumps(coverage_summary, indent=2).encode("utf-8"),
+                    file_name="blindspot_planar_coverage_summary.json",
+                    mime="application/json",
+                )
+            except Exception as exc:
+                st.error(f"Planar coverage estimation failed: {exc}")
 
 
 
