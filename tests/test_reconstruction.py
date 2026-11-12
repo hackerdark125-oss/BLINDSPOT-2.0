@@ -89,7 +89,7 @@ def test_exclude_detection_regions_masks_boxes_with_padding_and_clipping():
 
     valid = np.ones((10, 12), dtype=bool)
     masked = exclude_detection_regions(valid, [(2, 3, 4, 3)], padding=1)
-    assert masked.sum() == valid.sum() - (6 * 6)
+    assert masked.sum() == valid.sum() - (6 * 5)
     assert not masked[2:7, 1:7].any()
     assert valid.all()  # input mask is not mutated
 
