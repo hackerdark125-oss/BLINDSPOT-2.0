@@ -347,3 +347,19 @@ The verifier estimates a rigid transform only from already paired 3D features. I
 - [ ] Independently verify the returned metric transform before adding it as a pose-graph edge.
 
 This automated path builds 3D correspondences from ORB matches and supplied depth maps. It cannot correct bad stereo calibration, time offsets, moving objects, or repeated-pattern mismatches.
+
+
+## 6.22 Live YOLO/ByteTrack camera and RTSP validation
+
+- [ ] Install the optional AI dependencies from requirements-ai.txt and record the YOLO model-weight version/hash.
+- [ ] Verify a local webcam opens using the correct camera index and that the dashboard reports a bounded sample count.
+- [ ] Verify a trusted RTSP/HTTP stream opens from the Streamlit host; do not expose credentials in logs or screenshots.
+- [ ] Disconnect the stream during capture and record how the selected OpenCV backend behaves on failed reads and blocking reads.
+- [ ] Compare annotated detections with manually labelled frames; report per-class precision, recall, false positives, and false negatives.
+- [ ] Track a person/vehicle through occlusion and scene cuts; record ID switches and missed tracks rather than assuming IDs are permanent.
+- [ ] Record resolution, source FPS, processed-frame stride, inference image size, model variant, CPU/GPU, RAM, mean/p95 inference latency, and sampled throughput.
+- [ ] Repeat in daylight, low light, motion blur, crowded scenes, and partial occlusion.
+- [ ] Confirm the live AI CSV timestamps are relative to capture start and frame indices count successfully received frames.
+- [ ] Repeat with two independent Streamlit sessions and verify mutable ByteTrack state is not shared between users.
+
+The mocked-camera CI tests validate capture-loop logic and resource release only. They do not prove compatibility with a particular webcam, RTSP server, GPU, camera driver, or network environment. The configured idle timeout detects repeated failed reads but cannot guarantee interruption of a blocking OpenCV backend call. Treat all detections and track IDs as research diagnostics, never as collision-avoidance or flight-control guarantees.
