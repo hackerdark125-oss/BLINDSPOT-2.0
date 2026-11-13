@@ -75,7 +75,7 @@ def main() -> None:
             ["Recorded drone video", "Live drone stream (RTSP/HTTP)"],
             horizontal=True,
         )
-        results = None
+        results = st.session_state.get("aerial_tracking_results")
         if source_mode == "Recorded drone video":
             upload = st.file_uploader(
                 "Upload drone footage", type=["mp4", "mov", "avi", "mkv", "m4v"]
@@ -89,14 +89,18 @@ def main() -> None:
                 with tempfile.TemporaryDirectory() as folder:
                     video_path = Path(folder) / f"drone_upload{suffix}"
                     video_path.write_bytes(upload.getvalue())
-                    with st.spinner("Running YOLO detection and ByteTrack..."):
-                        detector = YOLODetector(weights)
-                        results = process_video(
-                            str(video_path), sample_every_frames=sample_stride,
-                            max_samples=max_samples, detector=detector,
-                            classes=[COCO_CLASSES[name] for name in selected_names],
-                            confidence=confidence, image_size=image_size,
-                        )
+                    try:
+                        with st.spinner("Running YOLO detection and ByteTrack..."):
+                            detector = YOLODetector(weights)
+                            results = process_video(
+                                str(video_path), sample_every_frames=sample_stride,
+                                max_samples=max_samples, detector=detector,
+                                classes=[COCO_CLASSES[name] for name in selected_names],
+                                confidence=confidence, image_size=image_size,
+                            )
+                        st.session_state["aerial_tracking_results"] = results
+                    except Exception as exc:
+                        st.error(f"Aerial video analysis failed: {exc}")
         else:
             stream_url = st.text_input(
                 "Drone video stream URL", placeholder="rtsp://drone-or-ground-station/stream"
@@ -109,15 +113,19 @@ def main() -> None:
                 if not stream_url.startswith(("rtsp://", "rtsps://", "http://", "https://")):
                     st.error("Enter an RTSP, RTSPS, HTTP or HTTPS drone stream URL.")
                 else:
-                    with st.spinner("Connecting to drone video stream..."):
-                        detector = YOLODetector(weights)
-                        results = process_stream(
-                            stream_url, duration_seconds=60,
-                            sample_every_frames=sample_stride,
-                            max_samples=max_samples, detector=detector,
-                            classes=[COCO_CLASSES[name] for name in selected_names],
-                            confidence=confidence, image_size=image_size,
-                        )
+                    try:
+                        with st.spinner("Connecting to drone video stream..."):
+                            detector = YOLODetector(weights)
+                            results = process_stream(
+                                stream_url, duration_seconds=60,
+                                sample_every_frames=sample_stride,
+                                max_samples=max_samples, detector=detector,
+                                classes=[COCO_CLASSES[name] for name in selected_names],
+                                confidence=confidence, image_size=image_size,
+                            )
+                        st.session_state["aerial_tracking_results"] = results
+                    except Exception as exc:
+                        st.error(f"Live drone analysis failed: {exc}")
 
         if results:
             metrics = _tracking_table(results)
