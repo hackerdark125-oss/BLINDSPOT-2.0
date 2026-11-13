@@ -336,3 +336,14 @@ A green CI run is required before merging software changes. It is not a substitu
 - [ ] Repeat with false-revisit pairs, moving objects, low-texture scenes, and depth outliers.
 
 The verifier estimates a rigid transform only from already paired 3D features. It does not discover image correspondences, guarantee that features are static, or prove that the input stereo calibration is correct.
+
+
+## 6.21 End-to-end stereo-frame metric loop-closure verification
+
+- [ ] Supply two rectified frames, their corresponding aligned depth maps, and the matching rectified intrinsic matrix.
+- [ ] Run `verify_stereo_frame_loop_closure` and record feature-match count, valid-depth count, RANSAC inlier count/ratio, transform, and RMSE.
+- [ ] Confirm depth maps are synchronized with the image frames and use the same units/calibration.
+- [ ] Test a known rigid camera movement and a false revisit pair; reject candidates that fail the configured inlier gates.
+- [ ] Independently verify the returned metric transform before adding it as a pose-graph edge.
+
+This automated path builds 3D correspondences from ORB matches and supplied depth maps. It cannot correct bad stereo calibration, time offsets, moving objects, or repeated-pattern mismatches.
