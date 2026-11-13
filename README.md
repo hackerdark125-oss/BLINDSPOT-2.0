@@ -508,3 +508,22 @@ This composes existing pairwise stereo calibrations; it does not automatically
 capture or detect calibration targets, synchronize sensors, or globally
 optimise all noisy pairwise measurements. A connected graph is not proof of
 metric accuracy. Verify the rig against an independent measurement before use.
+
+
+## Reconstruction profiling and score calibration diagnostics
+
+Run a deterministic synthetic software profile from the repository root:
+
+```bash
+python scripts/profile_reconstruction.py --points 800 --poses 8 --output profile_report.json
+```
+
+The report includes wall-clock time, Python-tracked peak allocations, optional process RSS deltas (when `psutil` is installed), ICP fitness/RMSE, and pose-graph cost reduction. These synthetic timings are for regression/comparison only; they do not predict performance on a different camera, GPU, CPU, or point-cloud distribution.
+
+The human-labelled image-quality benchmark now also reports score-bin agreement gaps and a normalized Brier-like error:
+
+```bash
+python scripts/benchmark_quality.py --input quality_labels.csv --output quality_benchmark.json
+```
+
+These are diagnostics against normalized human ratings, not probabilistic calibration. Keep a held-out labelled set and report results separately by lighting, blur, exposure, and scene condition. Never describe the heuristic confidence score as a calibrated probability based on these metrics alone.
