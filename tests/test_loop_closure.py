@@ -122,3 +122,22 @@ def test_metric_loop_closure_rejects_bad_correspondences():
     line = np.array([[0., 0., 0.], [1., 0., 0.], [2., 0., 0.], [3., 0., 0.]])
     with pytest.raises(ValueError, match="collinear"):
         verify_metric_loop_closure(line, line, min_inliers=3)
+
+
+def test_metric_loop_closure_is_reproducible_with_fixed_seed():
+    rng = np.random.default_rng(22)
+    source = rng.normal(size=(50, 3))
+    target = source + np.array([0.1, -0.2, 0.05])
+    target[:10] = rng.normal(size=(10, 3))
+    first = verify_metric_loop_closure(
+        source, target, threshold=0.01, min_inliers=20,
+        min_inlier_ratio=0.5, random_seed=11,
+    )
+    second = verify_metric_loop_closure(
+        source, target, threshold=0.01, min_inliers=20,
+        min_inlier_ratio=0.5, random_seed=11,
+    )
+    assert first.inlier_count == second.inlier_count
+    assert np.array_equal(first.inlier_mask, second.inlier_mask)
+    assert np.allclose(first.rotation, second.rotation)
+    assert np.allclose(first.translation, second.translation)
