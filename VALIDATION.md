@@ -324,3 +324,15 @@ A green CI run is required before merging software changes. It is not a substitu
 - [ ] Archive per-edge rotation residuals, translation residuals, aggregate weighted RMSE, and source of each constraint.
 - [ ] Compare residuals before and after optimization; investigate any edge whose residual increases materially.
 - [ ] Verify loop-closure measurements independently. A small residual only proves consistency with the supplied measurement, not its correctness.
+
+
+## 6.20 Metric verification of retrieved loop-closure candidates
+
+- [ ] Obtain paired 3D points for the same features in the earlier and later stereo observations, using the same distance unit.
+- [ ] Call `blindspot.loop_closure.verify_metric_loop_closure` with a threshold appropriate to the depth noise and rig calibration.
+- [ ] Record inlier count/ratio, rigid transform, RMSE, threshold, and the original candidate frame indices.
+- [ ] Reject candidates that fail either the minimum inlier-count or inlier-ratio gate.
+- [ ] Compare the resulting metric transform with an independent surveyed pose or trusted odometry constraint before adding it to the pose graph.
+- [ ] Repeat with false-revisit pairs, moving objects, low-texture scenes, and depth outliers.
+
+The verifier estimates a rigid transform only from already paired 3D features. It does not discover image correspondences, guarantee that features are static, or prove that the input stereo calibration is correct.
