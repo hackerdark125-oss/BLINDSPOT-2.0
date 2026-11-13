@@ -235,3 +235,97 @@ def verify_metric_loop_closure(
         median_error=median, threshold=float(threshold),
         verified=bool(count >= min_inliers and ratio >= min_inlier_ratio),
     )
+
+
+@dataclass(frozen=True)
+class StereoFrameLoopClosureResult:
+    """Metric verification result plus image/depth correspondence counts."""
+
+    verification: MetricLoopClosureVerification
+    feature_match_count: int
+    valid_depth_match_count: int
+
+
+def verify_stereo_frame_loop_closure(
+    earlier_frame: np.ndarray,
+    later_frame: np.ndarray,
+    earlier_depth: np.ndarray,
+    later_depth: np.ndarray,
+    camera_matrix: object,
+    threshold: float = 0.05,
+    min_inliers: int = 12,
+    min_inlier_ratio: float = 0.35,
+    max_features: int = 2500,
+    ratio_threshold: float = 0.75,
+    max_iterations: int = 1000,
+    random_seed: int = 0,
+) -> StereoFrameLoopClosureResult:
+    """Extract ORB matches, back-project stereo depths, and verify metric closure.
+
+    Both depth maps must be aligned with their corresponding rectified frames
+    and use the same distance unit. The intrinsic matrix must describe those
+    exact rectified images. The transform maps earlier-camera 3D points into
+    later-camera coordinates. RANSAC rejects inconsistent matches; it cannot
+    detect incorrect calibration, moving features, or repeated-pattern aliases.
+    """
+    gray_a = _gray_u8(earlier_frame, 0)
+    gray_b = _gray_u8(later_frame, 1)
+    if gray_a.shape != gray_b.shape:
+        raise ValueError("earlier_frame and later_frame must have the same dimensions")
+    depth_a = np.asarray(earlier_depth, dtype=np.float64)
+    depth_b = np.asarray(later_depth, dtype=np.float64)
+    if depth_a.shape != gray_a.shape or depth_b.shape != gray_b.shape:
+        raise ValueError("both depth maps must match their corresponding frame dimensions")
+    matrix = np.asarray(camera_matrix, dtype=np.float64)
+    if (matrix.shape != (3, 3) or not np.isfinite(matrix).all()
+            or matrix[0, 0] <= 0 or matrix[1, 1] <= 0):
+        raise ValueError("camera_matrix must be finite 3x3 with positive focal lengths")
+    if isinstance(max_features, bool) or not isinstance(max_features, int) or max_features < 32:
+        raise ValueError("max_features must be an integer >= 32")
+    if not np.isfinite(ratio_threshold) or not 0 < ratio_threshold < 1:
+        raise ValueError("ratio_threshold must be in (0, 1)")
+
+    detector = cv2.ORB_create(nfeatures=max_features)
+    key_a, desc_a = detector.detectAndCompute(gray_a, None)
+    key_b, desc_b = detector.detectAndCompute(gray_b, None)
+    if desc_a is None or desc_b is None:
+        raise ValueError("insufficient ORB features for metric loop closure")
+    pairs = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(desc_a, desc_b, k=2)
+    good = [
+        first for pair in pairs if len(pair) == 2
+        for first, second in [pair]
+        if first.distance < ratio_threshold * second.distance
+    ]
+    if not good:
+        raise ValueError("no reliable ORB feature matches for metric loop closure")
+
+    fx, fy = float(matrix[0, 0]), float(matrix[1, 1])
+    cx, cy = float(matrix[0, 2]), float(matrix[1, 2])
+    points_a, points_b = [], []
+    for match in good:
+        x_a, y_a = key_a[match.queryIdx].pt
+        x_b, y_b = key_b[match.trainIdx].pt
+        col_a, row_a = int(round(x_a)), int(round(y_a))
+        col_b, row_b = int(round(x_b)), int(round(y_b))
+        if not (0 <= row_a < depth_a.shape[0] and 0 <= col_a < depth_a.shape[1]
+                and 0 <= row_b < depth_b.shape[0] and 0 <= col_b < depth_b.shape[1]):
+            continue
+        z_a, z_b = depth_a[row_a, col_a], depth_b[row_b, col_b]
+        if not np.isfinite(z_a) or not np.isfinite(z_b) or z_a <= 0 or z_b <= 0:
+            continue
+        points_a.append(((x_a - cx) * z_a / fx, (y_a - cy) * z_a / fy, z_a))
+        points_b.append(((x_b - cx) * z_b / fx, (y_b - cy) * z_b / fy, z_b))
+    if len(points_a) < min_inliers:
+        raise ValueError("too few matched features have valid depth in both frames")
+
+    verification = verify_metric_loop_closure(
+        np.asarray(points_a), np.asarray(points_b),
+        threshold=threshold, min_inliers=min_inliers,
+        min_inlier_ratio=min_inlier_ratio, max_iterations=max_iterations,
+        random_seed=random_seed,
+    )
+    return StereoFrameLoopClosureResult(
+        verification=verification,
+        feature_match_count=len(good),
+        valid_depth_match_count=len(points_a),
+    )
