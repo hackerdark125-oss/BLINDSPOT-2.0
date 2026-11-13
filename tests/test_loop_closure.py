@@ -141,3 +141,50 @@ def test_metric_loop_closure_is_reproducible_with_fixed_seed():
     assert np.array_equal(first.inlier_mask, second.inlier_mask)
     assert np.allclose(first.rotation, second.rotation)
     assert np.allclose(first.translation, second.translation)
+
+
+from blindspot.loop_closure import verify_stereo_frame_loop_closure
+
+
+def test_stereo_frames_automatically_produce_metric_loop_closure_transform():
+    earlier = textured_scene(seed=15)
+    warp = np.float32([[1, 0, 4], [0, 1, 3]])
+    later = cv2.warpAffine(earlier, warp, (earlier.shape[1], earlier.shape[0]))
+    depth = np.full(earlier.shape, 5.0, dtype=np.float64)
+    intrinsics = np.array([
+        [100.0, 0.0, 160.0],
+        [0.0, 100.0, 120.0],
+        [0.0, 0.0, 1.0],
+    ])
+
+    result = verify_stereo_frame_loop_closure(
+        earlier, later, depth, depth, intrinsics,
+        threshold=0.02, min_inliers=8, min_inlier_ratio=0.3,
+        max_features=2000, ratio_threshold=0.8, max_iterations=500,
+        random_seed=4,
+    )
+
+    assert result.feature_match_count >= result.valid_depth_match_count >= 8
+    assert result.verification.verified
+    assert result.verification.inlier_count >= 8
+    assert np.allclose(
+        result.verification.translation, [0.2, 0.15, 0.0], atol=0.03
+    )
+
+
+def test_stereo_metric_loop_closure_rejects_mismatched_depth_maps():
+    image = textured_scene()
+    with pytest.raises(ValueError, match="match their corresponding"):
+        verify_stereo_frame_loop_closure(
+            image, image.copy(), np.ones((20, 20)), np.ones(image.shape), np.eye(3)
+        )
+
+
+def test_stereo_metric_loop_closure_rejects_depthless_matches():
+    image = textured_scene()
+    with pytest.raises(ValueError, match="valid depth"):
+        verify_stereo_frame_loop_closure(
+            image, image.copy(), np.zeros(image.shape), np.zeros(image.shape),
+            np.array([[100., 0., 160.], [0., 100., 120.], [0., 0., 1.]]),
+            min_inliers=8,
+        )
