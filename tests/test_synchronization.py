@@ -47,3 +47,38 @@ def test_failed_multi_camera_match_does_not_consume_partial_samples():
     assert len(matches) == 1
     assert matches[0]["reference_time_seconds"] == pytest.approx(0.05)
     assert matches[0]["samples"]["b"]["sample_index"] == 0
+
+
+@pytest.mark.parametrize("streams", [
+    {"a": ["0.0", "1.0"], "b": [0.0, 1.0]},
+    {"a": [True, 1.0], "b": [0.0, 1.0]},
+    {"a": [0.0, 1.0], "b": [0.0, float("inf")]},
+])
+def test_synchronization_rejects_non_numeric_or_non_finite_timestamps(streams):
+    with pytest.raises(ValueError, match="timestamps"):
+        synchronize_timestamps(streams)
+
+
+@pytest.mark.parametrize("offsets", [
+    {"b": "0.1"},
+    {"b": True},
+    {"b": float("nan")},
+    {"unknown": 0.0},
+])
+def test_synchronization_rejects_invalid_offsets(offsets):
+    with pytest.raises(ValueError):
+        synchronize_timestamps({"a": [0.0], "b": [0.0]}, offsets_seconds=offsets)
+
+
+@pytest.mark.parametrize("tolerance", [True, -0.1, float("nan"), float("inf"), "0.1"])
+def test_synchronization_rejects_invalid_tolerance(tolerance):
+    with pytest.raises(ValueError, match="tolerance_seconds"):
+        synchronize_timestamps({"a": [0.0], "b": [0.0]}, tolerance_seconds=tolerance)
+
+
+def test_synchronization_rejects_offset_overflow():
+    with pytest.raises(ValueError, match="aligned timestamps"):
+        synchronize_timestamps(
+            {"a": [1e308], "b": [1e308]},
+            offsets_seconds={"b": 1e308},
+        )
