@@ -544,3 +544,18 @@ The loop-closure module also exposes `verify_metric_loop_closure(source_points, 
 
 
 For end-to-end metric verification, `verify_stereo_frame_loop_closure` accepts two rectified grayscale/BGR frames, their aligned stereo depth maps, and the rectified camera matrix. It extracts ORB matches, back-projects valid matched depths into 3D, and runs RANSAC. The result includes the metric transform, inlier mask/ratio, and RMSE. Depth maps must be synchronized, aligned to their frames, and share the same distance unit. The API verifies a retrieved candidate; it does not make inaccurate calibration or dynamic-scene matches safe.
+
+
+## Live AI camera and network-stream tracking
+
+The **AI live webcam / RTSP** dashboard mode runs YOLO11 + ByteTrack on a bounded capture from a local camera index or a trusted RTSP/HTTP(S) stream. It supports the 80 COCO classes, model-size selection, confidence threshold, inference resolution, frame stride, sampled-frame annotations, per-class counts, and CSV export. Capture duration, sample count, and failed-read idle timeout are bounded to avoid an unbounded analysis run.
+
+Install the optional model dependencies before using this mode:
+
+```bash
+pip install -r requirements-ai.txt
+```
+
+The first run may download model weights. Live capture executes on the host running Streamlit, not in the browser. In a hosted deployment, the camera or network stream must be reachable from that server. The configured idle timeout handles repeated failed reads, but an individual camera backend call may itself block; behavior depends on the OpenCV backend and network transport. Keep credentials out of URLs committed to source control.
+
+Mutable YOLO/ByteTrack instances are cached per Streamlit session to avoid sharing tracker state between users. Track IDs are temporary and can switch after occlusion, scene cuts, or dropped frames. This is a bounded research workflow, not continuous surveillance, collision avoidance, or a safety-critical alert system.

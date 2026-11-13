@@ -110,3 +110,97 @@ def test_reset_tracker_clears_each_persistent_tracker():
 
 def test_reset_tracker_is_safe_before_predictor_initialization():
     YOLODetector(model=FakeModel()).reset_tracker()
+
+
+def test_process_live_stream_samples_frames_and_releases_capture(monkeypatch):
+    from blindspot.ai_detection import COCO_CLASSES, process_stream
+
+    class FakeCapture:
+        def __init__(self):
+            self.frames = [np.zeros((80, 100, 3), dtype=np.uint8) for _ in range(4)]
+            self.released = False
+
+        def isOpened(self):
+            return True
+
+        def read(self):
+            if self.frames:
+                return True, self.frames.pop(0)
+            return False, None
+
+        def release(self):
+            self.released = True
+
+    class FakeDetector:
+        def __init__(self):
+            self.reset = 0
+            self.calls = 0
+
+        def reset_tracker(self):
+            self.reset += 1
+
+        def track_frame(self, frame, **kwargs):
+            self.calls += 1
+            return []
+
+    capture = FakeCapture()
+    detector = FakeDetector()
+    monkeypatch.setattr("blindspot.ai_detection.cv2.VideoCapture", lambda source: capture)
+    results = process_stream(
+        "0", duration_seconds=10, sample_every_frames=1, max_samples=2,
+        detector=detector, classes=[COCO_CLASSES["person"]],
+    )
+    assert len(results) == 2
+    assert [item.frame_index for item in results] == [0, 1]
+    assert all(item.annotated_frame.shape == (80, 100, 3) for item in results)
+    assert detector.reset == 1
+    assert detector.calls == 2
+    assert capture.released is True
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"duration_seconds": 0},
+    {"duration_seconds": True},
+    {"sample_every_frames": 0},
+    {"max_samples": 0},
+    {"image_size": 16},
+    {"read_timeout_seconds": 0},
+    {"classes": [-1]},
+])
+def test_process_live_stream_rejects_invalid_settings(kwargs):
+    from blindspot.ai_detection import process_stream
+
+    with pytest.raises(ValueError):
+        process_stream("0", detector=object(), **kwargs)
+
+
+def test_process_live_stream_rejects_invalid_camera_source():
+    from blindspot.ai_detection import process_stream
+
+    with pytest.raises(ValueError, match="camera index or RTSP"):
+        process_stream("not-a-camera-url", detector=object())
+
+
+def test_process_live_stream_stops_after_repeated_failed_reads(monkeypatch):
+    from blindspot.ai_detection import process_stream
+
+    class EmptyCapture:
+        released = False
+
+        def isOpened(self):
+            return True
+
+        def read(self):
+            return False, None
+
+        def release(self):
+            self.released = True
+
+    capture = EmptyCapture()
+    monkeypatch.setattr("blindspot.ai_detection.cv2.VideoCapture", lambda source: capture)
+    with pytest.raises(ValueError, match="No frames received"):
+        process_stream(
+            "0", duration_seconds=10, read_timeout_seconds=0.001,
+            detector=SimpleNamespace(reset_tracker=lambda: None),
+        )
+    assert capture.released is True

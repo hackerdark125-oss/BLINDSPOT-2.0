@@ -14,7 +14,7 @@ from blindspot.engine import sample_video, prioritise_cells
 from blindspot.live import capture_live_source
 from blindspot.calibration import calibrate_camera, load_calibration_json, undistort_frame
 from blindspot.people import process_video as process_people_video
-from blindspot.ai_detection import YOLODetector, process_video as process_ai_video
+from blindspot.ai_detection import COCO_CLASSES, YOLODetector, process_video as process_ai_video, process_stream as process_ai_stream
 from blindspot.synchronization import synchronize_timestamps
 from blindspot.stereo import (
     calibrate_stereo_cameras, load_stereo_calibration_json,
@@ -38,10 +38,12 @@ from blindspot.registration import register_point_cloud_icp
 from blindspot.ply import read_ascii_ply
 
 
-@st.cache_resource(show_spinner=False)
 def get_yolo_detector(weights: str):
-    """Cache loaded YOLO models between Streamlit reruns."""
-    return YOLODetector(weights)
+    """Cache one mutable YOLO/ByteTrack instance per Streamlit user session."""
+    detectors = st.session_state.setdefault("_blindspot_yolo_detectors", {})
+    if weights not in detectors:
+        detectors[weights] = YOLODetector(weights)
+    return detectors[weights]
 
 st.set_page_config(page_title="BlindSpot 2.0", page_icon="◉", layout="wide")
 st.title("◉ BLINDSPOT 2.0")
@@ -59,7 +61,7 @@ with st.sidebar:
     grid = st.selectbox("Confidence map resolution", [4, 6, 8, 12], index=2)
     review_count = st.slider("Weak regions to show", 3, 20, 5)
 
-mode = st.radio("Analysis source", ["Recorded videos", "Live webcam / RTSP", "Person detection & tracking", "AI object detection & tracking", "Camera calibration"], horizontal=True)
+mode = st.radio("Analysis source", ["Recorded videos", "Live webcam / RTSP", "Person detection & tracking", "AI object detection & tracking", "AI live webcam / RTSP", "Camera calibration"], horizontal=True)
 
 
 def render_results(name: str, results, live: bool = False) -> pd.DataFrame:
@@ -368,29 +370,7 @@ elif mode == "AI object detection & tracking":
         ai_confidence = st.slider("Detection confidence", 0.05, 0.95, 0.25, 0.05)
         ai_image_size = st.select_slider("Inference image size", options=[320, 416, 512, 640, 768, 960], value=640)
     with ai_col3:
-        class_options = {
-            "person": 0, "bicycle": 1, "car": 2, "motorcycle": 3,
-            "airplane": 4, "bus": 5, "train": 6, "truck": 7, "boat": 8,
-            "traffic light": 9, "fire hydrant": 10, "stop sign": 11,
-            "parking meter": 12, "bench": 13, "bird": 14, "cat": 15,
-            "dog": 16, "horse": 17, "sheep": 18, "cow": 19,
-            "elephant": 20, "bear": 21, "zebra": 22, "giraffe": 23,
-            "backpack": 24, "umbrella": 25, "handbag": 26, "tie": 27,
-            "suitcase": 28, "frisbee": 29, "skis": 30, "snowboard": 31,
-            "sports ball": 32, "kite": 33, "baseball bat": 34,
-            "baseball glove": 35, "skateboard": 36, "surfboard": 37,
-            "tennis racket": 38, "bottle": 39, "wine glass": 40, "cup": 41,
-            "fork": 42, "knife": 43, "spoon": 44, "bowl": 45,
-            "banana": 46, "apple": 47, "sandwich": 48, "orange": 49,
-            "broccoli": 50, "carrot": 51, "hot dog": 52, "pizza": 53,
-            "donut": 54, "cake": 55, "chair": 56, "couch": 57,
-            "potted plant": 58, "bed": 59, "dining table": 60, "toilet": 61,
-            "tv": 62, "laptop": 63, "mouse": 64, "remote": 65,
-            "keyboard": 66, "cell phone": 67, "microwave": 68, "oven": 69,
-            "toaster": 70, "sink": 71, "refrigerator": 72, "book": 73,
-            "clock": 74, "vase": 75, "scissors": 76, "teddy bear": 77,
-            "hair drier": 78, "toothbrush": 79,
-        }
+        class_options = COCO_CLASSES
         selected_labels = st.multiselect(
             "Object classes",
             list(class_options),
@@ -488,6 +468,111 @@ elif mode == "AI object detection & tracking":
                 st.error(str(exc))
             except Exception as exc:
                 st.error(f"AI object tracking failed: {exc}")
+
+
+elif mode == "AI live webcam / RTSP":
+    st.subheader("Live AI object detection and tracking")
+    st.warning(
+        "The camera/stream is opened by the machine running Streamlit. "
+        "For remote deployment, the server must be able to reach the camera URL. "
+        "This is a bounded capture, not continuous 24/7 monitoring."
+    )
+    source_text = st.text_input("Camera index or RTSP/HTTP(S) stream URL", value="0", key="ai_live_source")
+    live_col1, live_col2, live_col3 = st.columns(3)
+    with live_col1:
+        live_weights = st.selectbox("Live model size", ["yolo11n.pt", "yolo11s.pt"], key="ai_live_weights")
+        live_duration = st.slider("Capture duration (seconds)", 1, 60, 15, key="ai_live_duration")
+    with live_col2:
+        live_stride = st.slider("Process every Nth received frame", 1, 20, 3, key="ai_live_stride")
+        live_confidence = st.slider("Live detection confidence", 0.05, 0.95, 0.25, 0.05, key="ai_live_confidence")
+    with live_col3:
+        live_image_size = st.select_slider(
+            "Live inference image size", options=[320, 416, 512, 640, 768, 960],
+            value=640, key="ai_live_image_size",
+        )
+        live_timeout = st.slider("Stream read timeout (seconds)", 1.0, 15.0, 5.0, 0.5, key="ai_live_timeout")
+    live_labels = st.multiselect(
+        "Live object classes", list(COCO_CLASSES),
+        default=["person", "car", "motorcycle", "bus", "truck"],
+        key="ai_live_classes",
+    )
+    st.caption(
+        "Frame timestamps use a monotonic clock. ByteTrack IDs are temporary and may switch "
+        "after occlusion, scene cuts, or dropped frames. YOLO results are not a safety guarantee."
+    )
+    if st.button("Start bounded live AI analysis", type="primary", key="start_ai_live"):
+        if not live_labels:
+            st.warning("Select at least one object class.")
+        else:
+            try:
+                with st.spinner("Connecting to stream and running YOLO + ByteTrack..."):
+                    detector = get_yolo_detector(live_weights)
+                    live_results = process_ai_stream(
+                        source_text,
+                        duration_seconds=float(live_duration),
+                        sample_every_frames=live_stride,
+                        max_samples=max_frames,
+                        weights=live_weights,
+                        classes=[COCO_CLASSES[label] for label in live_labels],
+                        confidence=float(live_confidence),
+                        image_size=live_image_size,
+                        detector=detector,
+                        read_timeout_seconds=float(live_timeout),
+                    )
+                observations = []
+                track_ids = set()
+                class_counts = {}
+                for result in live_results:
+                    st.image(
+                        cv2.cvtColor(result.annotated_frame, cv2.COLOR_BGR2RGB),
+                        caption=f"Live +{result.timestamp_seconds:.2f}s · "
+                                f"{len(result.detections)} object(s)",
+                        use_container_width=True,
+                    )
+                    for item in result.detections:
+                        if item.track_id is not None:
+                            track_ids.add(item.track_id)
+                        class_counts[item.class_name] = class_counts.get(item.class_name, 0) + 1
+                        observations.append({
+                            "Received frame index": result.frame_index,
+                            "Time since capture start (s)": result.timestamp_seconds,
+                            "YOLO + ByteTrack (ms)": result.inference_time_ms,
+                            "Track ID": item.track_id,
+                            "Class": item.class_name,
+                            "Class ID": item.class_id,
+                            "Confidence": item.confidence,
+                            "X": item.x, "Y": item.y,
+                            "Width": item.width, "Height": item.height,
+                        })
+                live_df = pd.DataFrame(observations, columns=[
+                    "Received frame index", "Time since capture start (s)",
+                    "YOLO + ByteTrack (ms)", "Track ID", "Class", "Class ID",
+                    "Confidence", "X", "Y", "Width", "Height",
+                ])
+                mean_ms = float(np.mean([item.inference_time_ms for item in live_results]))
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Frames sampled", len(live_results))
+                m2.metric("Unique track IDs", len(track_ids))
+                m3.metric("Object observations", len(observations))
+                m4.metric("Mean inference", f"{mean_ms:.1f} ms")
+                st.caption(
+                    f"Model + tracker throughput: {1000.0 / mean_ms:.1f} FPS "
+                    "excluding camera decoding and dashboard rendering"
+                )
+                if class_counts:
+                    st.write("**Detections by class**")
+                    st.bar_chart(pd.Series(class_counts, name="Observations"))
+                st.dataframe(live_df, use_container_width=True, hide_index=True)
+                st.download_button(
+                    "Download live AI tracking CSV",
+                    live_df.to_csv(index=False).encode("utf-8"),
+                    file_name="blindspot_live_ai_tracking.csv",
+                    mime="text/csv",
+                    key="download_live_ai_tracking",
+                )
+                st.success(f"Live capture completed with {len(live_results)} sampled frames.")
+            except Exception as exc:
+                st.error(f"Live AI analysis failed: {exc}")
 
 else:
     st.subheader("Camera calibration")

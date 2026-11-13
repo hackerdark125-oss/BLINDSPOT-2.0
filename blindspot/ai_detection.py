@@ -8,10 +8,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
+import time
 from typing import Any, Sequence
 
 import cv2
 import numpy as np
+
+from blindspot.live import parse_camera_source
 
 
 @dataclass(frozen=True)
@@ -33,6 +36,31 @@ class ObjectTrackingFrame:
     inference_time_ms: float
     annotated_frame: np.ndarray
     detections: tuple[ObjectDetection, ...]
+
+
+COCO_CLASSES: dict[str, int] = {
+    "person": 0, "bicycle": 1, "car": 2, "motorcycle": 3,
+    "airplane": 4, "bus": 5, "train": 6, "truck": 7, "boat": 8,
+    "traffic light": 9, "fire hydrant": 10, "stop sign": 11,
+    "parking meter": 12, "bench": 13, "bird": 14, "cat": 15,
+    "dog": 16, "horse": 17, "sheep": 18, "cow": 19,
+    "elephant": 20, "bear": 21, "zebra": 22, "giraffe": 23,
+    "backpack": 24, "umbrella": 25, "handbag": 26, "tie": 27,
+    "suitcase": 28, "frisbee": 29, "skis": 30, "snowboard": 31,
+    "sports ball": 32, "kite": 33, "baseball bat": 34,
+    "baseball glove": 35, "skateboard": 36, "surfboard": 37,
+    "tennis racket": 38, "bottle": 39, "wine glass": 40, "cup": 41,
+    "fork": 42, "knife": 43, "spoon": 44, "bowl": 45,
+    "banana": 46, "apple": 47, "sandwich": 48, "orange": 49,
+    "broccoli": 50, "carrot": 51, "hot dog": 52, "pizza": 53,
+    "donut": 54, "cake": 55, "chair": 56, "couch": 57,
+    "potted plant": 58, "bed": 59, "dining table": 60, "toilet": 61,
+    "tv": 62, "laptop": 63, "mouse": 64, "remote": 65,
+    "keyboard": 66, "cell phone": 67, "microwave": 68, "oven": 69,
+    "toaster": 70, "sink": 71, "refrigerator": 72, "book": 73,
+    "clock": 74, "vase": 75, "scissors": 76, "teddy bear": 77,
+    "hair drier": 78, "toothbrush": 79,
+}
 
 
 class YOLODetector:
@@ -200,4 +228,92 @@ def process_video(
         capture.release()
     if not output:
         raise ValueError("No readable frames were found in this video")
+    return output
+
+
+def process_stream(
+    source: str | int,
+    duration_seconds: float = 15.0,
+    sample_every_frames: int = 3,
+    max_samples: int = 120,
+    weights: str = "yolo11n.pt",
+    classes: Sequence[int] | None = None,
+    confidence: float = 0.25,
+    image_size: int = 640,
+    detector: YOLODetector | None = None,
+    read_timeout_seconds: float = 5.0,
+) -> list[ObjectTrackingFrame]:
+    """Run YOLO + ByteTrack on a bounded webcam or RTSP/HTTP stream."""
+    if (isinstance(duration_seconds, bool) or not np.isfinite(duration_seconds)
+            or not 1 <= duration_seconds <= 60):
+        raise ValueError("duration_seconds must be between 1 and 60")
+    if isinstance(sample_every_frames, bool) or not isinstance(sample_every_frames, int) or sample_every_frames < 1:
+        raise ValueError("sample_every_frames must be a positive integer")
+    if isinstance(max_samples, bool) or not isinstance(max_samples, int) or max_samples < 1:
+        raise ValueError("max_samples must be a positive integer")
+    if not np.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+        raise ValueError("confidence must be between 0 and 1")
+    if isinstance(image_size, bool) or not isinstance(image_size, int) or image_size < 32:
+        raise ValueError("image_size must be an integer of at least 32")
+    if (isinstance(read_timeout_seconds, bool) or not np.isfinite(read_timeout_seconds)
+            or read_timeout_seconds <= 0):
+        raise ValueError("read_timeout_seconds must be a positive finite number")
+    if classes is not None and any(
+        isinstance(item, bool) or not isinstance(item, int) or item < 0 for item in classes
+    ):
+        raise ValueError("class IDs must be non-negative integers")
+
+    camera_source = parse_camera_source(source)
+    detector = detector or YOLODetector(weights)
+    detector.reset_tracker()
+    capture = cv2.VideoCapture(camera_source)
+    if not capture.isOpened():
+        capture.release()
+        raise ValueError(
+            f"Could not open camera source: {camera_source if isinstance(camera_source, int) else 'stream URL'}"
+        )
+
+    output: list[ObjectTrackingFrame] = []
+    started = perf_counter()
+    last_frame_received = started
+    frame_index = 0
+    try:
+        while perf_counter() - started < duration_seconds and len(output) < max_samples:
+            ok, frame = capture.read()
+            if not ok:
+                if perf_counter() - last_frame_received >= read_timeout_seconds:
+                    break
+                time.sleep(0.02)
+                continue
+            last_frame_received = perf_counter()
+            if frame_index % sample_every_frames == 0:
+                inference_started = perf_counter()
+                detections = detector.track_frame(
+                    frame, classes=classes, confidence=confidence, image_size=image_size
+                )
+                inference_time_ms = (perf_counter() - inference_started) * 1000.0
+                annotated = frame.copy()
+                for item in detections:
+                    x1, y1 = item.x, item.y
+                    x2, y2 = x1 + item.width, y1 + item.height
+                    cv2.rectangle(annotated, (x1, y1), (x2, y2), (40, 220, 80), 2)
+                    identity = f"ID {item.track_id}" if item.track_id is not None else "ID pending"
+                    cv2.putText(
+                        annotated, f"{item.class_name} {identity} {item.confidence:.2f}",
+                        (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5, (40, 220, 80), 2, cv2.LINE_AA,
+                    )
+                output.append(ObjectTrackingFrame(
+                    frame_index=frame_index,
+                    timestamp_seconds=last_frame_received - started,
+                    inference_time_ms=inference_time_ms,
+                    annotated_frame=annotated,
+                    detections=tuple(detections),
+                ))
+            frame_index += 1
+    finally:
+        capture.release()
+
+    if not output:
+        raise ValueError("No frames received. Check camera permissions, camera index, or stream URL.")
     return output
