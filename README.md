@@ -527,3 +527,14 @@ python scripts/benchmark_quality.py --input quality_labels.csv --output quality_
 ```
 
 These are diagnostics against normalized human ratings, not probabilistic calibration. Keep a held-out labelled set and report results separately by lighting, blur, exposure, and scene condition. Never describe the heuristic confidence score as a calibrated probability based on these metrics alone.
+
+
+### Quantitative pose-graph constraint verification
+
+After pose-graph optimisation, independently measure residuals for the supplied relative-pose constraints:
+
+```bash
+python scripts/evaluate_pose_graph.py --poses optimized_poses.json --constraints verified_constraints.json --output pose_graph_validation.json
+```
+
+The poses JSON is a list of objects with `rotation_matrix` and `translation_vector`. The constraints JSON is a list of objects with `i`, `j`, `rotation_matrix`, `translation_vector`, and optional `weight`. Each relative transform follows `X_j = R_ij X_i + t_ij`. The report includes per-edge rotation and translation residuals. Low residuals indicate consistency with the supplied constraints, not that those constraints are accurate; use independently verified metric measurements.
