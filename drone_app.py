@@ -80,17 +80,19 @@ def main() -> None:
             upload = st.file_uploader(
                 "Upload drone footage", type=["mp4", "mov", "avi", "mkv", "m4v"]
             )
-            run = st.button("Run aerial detection and tracking", type="primary",
-                            disabled=upload is None)
+            run = st.button(
+                "Run aerial detection and tracking", type="primary",
+                disabled=upload is None or not selected_names,
+            )
             if run and upload is not None:
                 suffix = Path(upload.name).suffix or ".mp4"
-                with tempfile.NamedTemporaryFile(suffix=suffix) as handle:
-                    handle.write(upload.getvalue())
-                    handle.flush()
+                with tempfile.TemporaryDirectory() as folder:
+                    video_path = Path(folder) / f"drone_upload{suffix}"
+                    video_path.write_bytes(upload.getvalue())
                     with st.spinner("Running YOLO detection and ByteTrack..."):
                         detector = YOLODetector(weights)
                         results = process_video(
-                            handle.name, sample_every_frames=sample_stride,
+                            str(video_path), sample_every_frames=sample_stride,
                             max_samples=max_samples, detector=detector,
                             classes=[COCO_CLASSES[name] for name in selected_names],
                             confidence=confidence, image_size=image_size,
@@ -99,8 +101,10 @@ def main() -> None:
             stream_url = st.text_input(
                 "Drone video stream URL", placeholder="rtsp://drone-or-ground-station/stream"
             )
-            run = st.button("Connect and analyse drone stream", type="primary",
-                            disabled=not stream_url.strip())
+            run = st.button(
+                "Connect and analyse drone stream", type="primary",
+                disabled=not stream_url.strip() or not selected_names,
+            )
             if run:
                 if not stream_url.startswith(("rtsp://", "rtsps://", "http://", "https://")):
                     st.error("Enter an RTSP, RTSPS, HTTP or HTTPS drone stream URL.")
@@ -205,10 +209,25 @@ def main() -> None:
             help="Replace the example with the measured camera/gimbal-to-ENU rotation.",
         )
         stride = st.slider("Point-cloud sampling stride", 1, 12, 3)
+        mapping_timestamp = None
+        if mapping_telemetry_upload is not None:
+            try:
+                mapping_records_preview = parse_telemetry_csv(
+                    mapping_telemetry_upload.getvalue().decode("utf-8-sig")
+                )
+                mapping_timestamp = st.number_input(
+                    "Telemetry timestamp for this depth map (seconds)",
+                    min_value=float(mapping_records_preview[0].timestamp_seconds),
+                    max_value=float(mapping_records_preview[-1].timestamp_seconds),
+                    value=float(mapping_records_preview[0].timestamp_seconds),
+                )
+            except (UnicodeDecodeError, ValueError) as exc:
+                st.error(f"Telemetry file could not be loaded: {exc}")
         if st.button(
             "Generate georeferenced PLY",
             type="primary",
-            disabled=not all([depth_upload, intrinsics_upload, mapping_telemetry_upload]),
+            disabled=not all([depth_upload, intrinsics_upload, mapping_telemetry_upload])
+                     or mapping_timestamp is None,
         ):
             try:
                 depth = np.load(depth_upload, allow_pickle=False)
@@ -220,13 +239,7 @@ def main() -> None:
                 telemetry = parse_telemetry_csv(
                     mapping_telemetry_upload.getvalue().decode("utf-8-sig")
                 )
-                timestamp = st.number_input(
-                    "Telemetry timestamp for this depth map (seconds)",
-                    min_value=float(telemetry[0].timestamp_seconds),
-                    max_value=float(telemetry[-1].timestamp_seconds),
-                    value=float(telemetry[0].timestamp_seconds),
-                )
-                pose = interpolate_telemetry(telemetry, float(timestamp))
+                pose = interpolate_telemetry(telemetry, float(mapping_timestamp))
                 rotation = np.asarray(json.loads(rotation_text), dtype=float)
                 camera_cloud = depth_to_point_cloud(depth, matrix, stride=stride)
                 origin = (
