@@ -26,7 +26,7 @@ def _pose_document():
 def test_camera_input_parses_id_and_path():
     camera_id, path = _camera_input("front=clouds/front camera.ply")
     assert camera_id == "front"
-    assert str(path) == "clouds/front camera.ply"
+    assert path.as_posix() == "clouds/front camera.ply"
 
 
 @pytest.mark.parametrize("value", ["missing-separator.ply", "=cloud.ply", "camera="])
