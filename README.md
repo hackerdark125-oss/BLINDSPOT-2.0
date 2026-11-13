@@ -541,3 +541,6 @@ The poses JSON is a list of objects with `rotation_matrix` and `translation_vect
 
 
 The loop-closure module also exposes `verify_metric_loop_closure(source_points, target_points)`. Supply paired 3D points from stereo observations of the same features. Its RANSAC fit returns a metric rigid transform, inlier mask/ratio, RMSE, and an explicit verified flag based on configurable count and ratio gates. It verifies an existing candidate; it does not generate stereo feature correspondences or replace independent validation.
+
+
+For end-to-end metric verification, `verify_stereo_frame_loop_closure` accepts two rectified grayscale/BGR frames, their aligned stereo depth maps, and the rectified camera matrix. It extracts ORB matches, back-projects valid matched depths into 3D, and runs RANSAC. The result includes the metric transform, inlier mask/ratio, and RMSE. Depth maps must be synchronized, aligned to their frames, and share the same distance unit. The API verifies a retrieved candidate; it does not make inaccurate calibration or dynamic-scene matches safe.
