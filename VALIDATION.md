@@ -293,3 +293,12 @@ The included evaluator uses greedy class-aware IoU matching and counts ID change
 - [ ] Inspect redundant-edge cycle rotation and translation residuals; inconsistent cycles indicate pairwise calibration disagreement.
 - [ ] Export the shared camera-to-world pose JSON and compare it with an independently measured rig layout before fusion.
 - [ ] Do not treat graph connectivity as proof of calibration accuracy or synchronization.
+
+
+## 1.1 Automated regression coverage
+
+The CI workflow compiles the application, library, scripts, and tests, then runs the complete pytest suite on Python 3.11. It also builds the runtime Docker image without publishing it.
+
+The reconstruction regression tests cover deterministic small-transform ICP recovery, XYZRGB input handling, invalid ICP configuration, insufficient correspondences, anchored SE(3) loop-closure correction, and invalid pose-graph constraints. Tracking regression tests cover perfect matches, false positives, missed detections, identity switches, invalid benchmark inputs, latency metrics, and repeated-frame freeze diagnostics.
+
+A green CI run is required before merging software changes. It is not a substitute for the real-camera, measured-distance, or held-out benchmark checks below.
