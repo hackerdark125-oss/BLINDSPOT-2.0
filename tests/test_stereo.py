@@ -181,3 +181,66 @@ def test_stereo_depth_returns_relative_confidence_map():
     assert result.confidence_map.dtype == np.float32
     assert np.all((result.confidence_map >= 0) & (result.confidence_map <= 1))
     assert np.all(result.confidence_map[~result.valid_mask] == 0)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("image_width", 0),
+    ("image_height", -1),
+    ("accepted_pairs", 2),
+    ("rejected_pairs", -1),
+    ("rms_reprojection_error", -0.1),
+    ("translation_unit", ""),
+])
+def test_stereo_json_rejects_invalid_metadata(field, value):
+    import json
+    from blindspot.stereo import load_stereo_calibration_json
+
+    data = make_stereo().__dict__.copy()
+    data[field] = value
+    with pytest.raises(ValueError, match="invalid parameters"):
+        load_stereo_calibration_json(json.dumps(data))
+
+
+@pytest.mark.parametrize("rotation", [
+    [[1, 0, 0], [0, 2, 0], [0, 0, 1]],
+    [[1, 0, 0], [0, 1, 0], [0, 0, -1]],
+])
+def test_stereo_json_rejects_non_rigid_rotation(rotation):
+    import json
+    from blindspot.stereo import load_stereo_calibration_json
+
+    data = make_stereo().__dict__.copy()
+    data["rotation_matrix"] = rotation
+    with pytest.raises(ValueError, match="invalid parameters"):
+        load_stereo_calibration_json(json.dumps(data))
+
+
+def test_stereo_json_rejects_non_object_document():
+    from blindspot.stereo import load_stereo_calibration_json
+
+    with pytest.raises(ValueError, match="invalid stereo calibration JSON"):
+        load_stereo_calibration_json("[]")
+
+
+def test_stereo_calibration_rejects_boolean_square_size():
+    images = [np.zeros((120, 160, 3), dtype=np.uint8) for _ in range(3)]
+    with pytest.raises(ValueError, match="square_size"):
+        calibrate_stereo_cameras(
+            images, images, make_intrinsics(), make_intrinsics(),
+            square_size=True,
+        )
+
+
+def test_stereo_depth_rejects_non_rigid_rotation_before_opencv():
+    from blindspot.stereo import StereoCalibration, rectify_and_compute_depth
+
+    original = make_stereo()
+    invalid = StereoCalibration(
+        **{**original.__dict__, "rotation_matrix": [[1, 0, 0], [0, 2, 0], [0, 0, 1]]}
+    )
+    image = np.zeros((120, 160, 3), dtype=np.uint8)
+    with pytest.raises(ValueError, match="invalid parameters"):
+        rectify_and_compute_depth(
+            image, image, make_intrinsics(), make_intrinsics(), invalid,
+            num_disparities=16, block_size=3,
+        )
