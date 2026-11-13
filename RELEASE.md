@@ -106,3 +106,13 @@ Before publishing a hosted instance:
 - Verify CPU and memory limits with representative clips and point-cloud sizes; no universal production sizing is claimed.
 - Restrict dashboard network access and use authenticated/restricted hosting when handling private camera feeds.
 - Retain the CI run URL, image tag/digest, calibration inputs, benchmark outputs, and known limitations with the deployment record.
+
+
+## Additional evaluation and profiling tools
+
+- `scripts/evaluate_pose_graph.py` measures per-edge rotation and translation residuals for supplied relative-pose constraints. This verifies consistency after optimisation; it does not discover loop closures or validate the source measurement.
+- `scripts/profile_reconstruction.py` records deterministic synthetic ICP and SE(3) runtime and memory diagnostics. Synthetic performance is not representative of every target device or camera stream.
+- `scripts/benchmark_quality.py` reports score-bin gaps and a normalized Brier-like score against human ratings. These are agreement diagnostics, not probabilistic calibration.
+- Automated tests now include score-calibration diagnostic bounds, deterministic reconstruction profiling, and loop-closure residual reduction checks.
+
+Automatic metric loop-closure discovery and constraint generation remain outside the current implemented scope. Real-world validation remains a user-run release gate after software development is complete.
