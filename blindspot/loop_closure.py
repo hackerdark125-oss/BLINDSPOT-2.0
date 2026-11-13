@@ -121,3 +121,113 @@ def detect_loop_closure_candidates(
             ))
 
     return sorted(candidates, key=lambda item: (-item.score, item.earlier_index, item.later_index))
+
+
+@dataclass(frozen=True)
+class MetricLoopClosureVerification:
+    """RANSAC result for a rigid transform between paired metric 3D points."""
+
+    rotation: np.ndarray
+    translation: np.ndarray
+    inlier_mask: np.ndarray
+    inlier_count: int
+    match_count: int
+    inlier_ratio: float
+    rmse: float
+    median_error: float
+    threshold: float
+    verified: bool
+
+
+def _fit_metric_rigid(source: np.ndarray, target: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    source_center = source.mean(axis=0)
+    target_center = target.mean(axis=0)
+    covariance = (source - source_center).T @ (target - target_center)
+    u, singular_values, vt = np.linalg.svd(covariance)
+    if len(singular_values) < 2 or singular_values[1] <= 1e-10:
+        raise ValueError("3D correspondences are degenerate or collinear")
+    correction = np.eye(3)
+    correction[2, 2] = np.linalg.det(vt.T @ u.T)
+    rotation = vt.T @ correction @ u.T
+    translation = target_center - rotation @ source_center
+    return rotation, translation
+
+
+def verify_metric_loop_closure(
+    source_points: object,
+    target_points: object,
+    threshold: float = 0.05,
+    min_inliers: int = 12,
+    min_inlier_ratio: float = 0.35,
+    max_iterations: int = 1000,
+    random_seed: int = 0,
+) -> MetricLoopClosureVerification:
+    """RANSAC-verify a metric transform from matched stereo 3D feature points.
+
+    The returned transform maps source coordinates into target coordinates.
+    Distances and threshold use the same unit as the input clouds. This verifies
+    a retrieved candidate only; it does not create image feature matches.
+    """
+    source = np.asarray(source_points, dtype=np.float64)
+    target = np.asarray(target_points, dtype=np.float64)
+    if source.ndim != 2 or source.shape[1] != 3 or len(source) < 3 or not np.isfinite(source).all():
+        raise ValueError("source_points must be a finite Nx3 array with N >= 3")
+    if target.ndim != 2 or target.shape != source.shape or not np.isfinite(target).all():
+        raise ValueError("target_points must be a finite Nx3 array matching source_points")
+    if not np.isfinite(threshold) or threshold <= 0:
+        raise ValueError("threshold must be positive and finite")
+    if isinstance(min_inliers, bool) or not isinstance(min_inliers, int) or min_inliers < 3:
+        raise ValueError("min_inliers must be an integer >= 3")
+    if not np.isfinite(min_inlier_ratio) or not 0 < min_inlier_ratio <= 1:
+        raise ValueError("min_inlier_ratio must be in (0, 1]")
+    if isinstance(max_iterations, bool) or not isinstance(max_iterations, int) or max_iterations < 1:
+        raise ValueError("max_iterations must be a positive integer")
+    if isinstance(random_seed, bool) or not isinstance(random_seed, int):
+        raise ValueError("random_seed must be an integer")
+    if len(source) < min_inliers:
+        raise ValueError("fewer 3D matches than min_inliers")
+
+    rng = np.random.default_rng(random_seed)
+    best_mask = np.zeros(len(source), dtype=bool)
+    best_rmse = np.inf
+    for _ in range(max_iterations):
+        sample = rng.choice(len(source), size=3, replace=False)
+        try:
+            rotation, translation = _fit_metric_rigid(source[sample], target[sample])
+        except ValueError:
+            continue
+        errors = np.linalg.norm((rotation @ source.T).T + translation - target, axis=1)
+        mask = errors <= threshold
+        count = int(mask.sum())
+        rmse = float(np.sqrt(np.mean(errors[mask] ** 2))) if count else np.inf
+        if count > int(best_mask.sum()) or (count == int(best_mask.sum()) and rmse < best_rmse):
+            best_mask, best_rmse = mask, rmse
+            if count == len(source):
+                break
+
+    if int(best_mask.sum()) < 3:
+        rotation, translation = np.eye(3), np.zeros(3)
+        errors = np.full(len(source), np.inf)
+    else:
+        rotation, translation = _fit_metric_rigid(source[best_mask], target[best_mask])
+        for _ in range(5):
+            errors = np.linalg.norm((rotation @ source.T).T + translation - target, axis=1)
+            refined = errors <= threshold
+            if int(refined.sum()) < 3 or np.array_equal(refined, best_mask):
+                break
+            best_mask = refined
+            rotation, translation = _fit_metric_rigid(source[best_mask], target[best_mask])
+        errors = np.linalg.norm((rotation @ source.T).T + translation - target, axis=1)
+        best_mask = errors <= threshold
+
+    count = int(best_mask.sum())
+    ratio = float(count / len(source))
+    rmse = float(np.sqrt(np.mean(errors[best_mask] ** 2))) if count else float("inf")
+    median = float(np.median(errors[best_mask])) if count else float("inf")
+    return MetricLoopClosureVerification(
+        rotation=rotation.copy(), translation=translation.copy(),
+        inlier_mask=best_mask.copy(), inlier_count=count,
+        match_count=len(source), inlier_ratio=ratio, rmse=rmse,
+        median_error=median, threshold=float(threshold),
+        verified=bool(count >= min_inliers and ratio >= min_inlier_ratio),
+    )
