@@ -239,7 +239,7 @@ def main() -> None:
         rotation_text = st.text_area(
             "Calibrated camera-to-ENU rotation matrix (3×3 JSON)",
             value="[[1,0,0],[0,1,0],[0,0,1]]",
-            help="Replace the example with the measured camera/gimbal-to-ENU rotation.",
+            help="Enter the camera-to-ENU rotation for this telemetry timestamp; for stereo mode the app converts rectified-camera coordinates back to the left-camera frame.",
         )
         depth_scale_to_m = st.number_input(
             "Depth-unit scale to metres", min_value=0.000001, max_value=1000000.0,
@@ -317,6 +317,13 @@ def main() -> None:
                 )
                 pose = interpolate_telemetry(telemetry, float(mapping_timestamp))
                 rotation = np.asarray(json.loads(rotation_text), dtype=float)
+                if mapping_mode == "Generate depth from calibrated stereo pair":
+                    # Stereo depth points are expressed in the rectified left-camera
+                    # frame. Convert them back to the physical left-camera frame
+                    # before applying the supplied camera-to-ENU rotation.
+                    rotation = rotation @ np.asarray(
+                        depth_result.rectification_rotation, dtype=float
+                    ).T
                 camera_cloud = depth_to_point_cloud(
                     depth_metres, matrix, color_image=color_image,
                     valid_mask=valid_mask, stride=stride,
