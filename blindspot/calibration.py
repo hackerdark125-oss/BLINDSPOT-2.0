@@ -44,11 +44,17 @@ def calibrate_camera(
     if (not isinstance(board_size, tuple) or len(board_size) != 2
             or any(isinstance(v, bool) or not isinstance(v, int) or v < 2 for v in board_size)):
         raise ValueError("board_size must be a tuple of two integers >= 2")
+    if isinstance(square_size, (bool, np.bool_)) or not np.isscalar(square_size):
+        raise ValueError("square_size must be a positive finite number")
+    try:
+        square_size = float(square_size)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("square_size must be a positive finite number") from exc
     if not np.isfinite(square_size) or square_size <= 0:
         raise ValueError("square_size must be a positive finite number")
     if isinstance(min_views, bool) or not isinstance(min_views, int) or min_views < 3:
         raise ValueError("min_views must be an integer of at least 3")
-    if not images:
+    if len(images) == 0:
         raise ValueError("at least three chessboard images are required")
 
     columns, rows = board_size
@@ -188,18 +194,51 @@ def load_calibration_json(content: str) -> CameraCalibration:
     """Load and validate a calibration object from JSON text."""
     try:
         data = json.loads(content)
+        if not isinstance(data, dict):
+            raise TypeError("calibration document must be a JSON object")
         calibration = CameraCalibration(**data)
-        matrix = np.asarray(calibration.camera_matrix, dtype=float)
-        distortion = np.asarray(calibration.distortion_coefficients, dtype=float)
-    except (TypeError, ValueError, KeyError, json.JSONDecodeError) as exc:
+        matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
+        distortion = np.asarray(calibration.distortion_coefficients, dtype=np.float64)
+        numeric_metrics = (
+            calibration.rms_reprojection_error,
+            calibration.square_size,
+            calibration.mean_view_reprojection_error_px,
+            calibration.max_view_reprojection_error_px,
+        )
+    except (TypeError, ValueError, KeyError, json.JSONDecodeError, OverflowError) as exc:
         raise ValueError("invalid calibration JSON") from exc
-    if (matrix.shape != (3, 3) or distortion.size < 4
-            or not np.isfinite(matrix).all() or not np.isfinite(distortion).all()
-            or not np.isfinite(calibration.rms_reprojection_error)
-            or not np.isfinite(calibration.mean_view_reprojection_error_px)
-            or not np.isfinite(calibration.max_view_reprojection_error_px)
-            or calibration.mean_view_reprojection_error_px < 0
-            or calibration.max_view_reprojection_error_px < 0
-            or calibration.image_width < 1 or calibration.image_height < 1):
+
+    integer_fields = (
+        calibration.image_width,
+        calibration.image_height,
+        calibration.board_columns,
+        calibration.board_rows,
+        calibration.accepted_views,
+        calibration.rejected_views,
+    )
+    if (
+        any(isinstance(value, bool) or not isinstance(value, int) for value in integer_fields)
+        or calibration.image_width < 1
+        or calibration.image_height < 1
+        or calibration.board_columns < 2
+        or calibration.board_rows < 2
+        or calibration.accepted_views < 3
+        or calibration.rejected_views < 0
+        or matrix.shape != (3, 3)
+        or distortion.ndim != 1
+        or distortion.size < 4
+        or not np.isfinite(matrix).all()
+        or not np.isfinite(distortion).all()
+        or any(isinstance(value, bool) or not isinstance(value, (int, float))
+               for value in numeric_metrics)
+        or not np.isfinite(numeric_metrics).all()
+        or calibration.rms_reprojection_error < 0
+        or calibration.square_size <= 0
+        or calibration.mean_view_reprojection_error_px < 0
+        or calibration.max_view_reprojection_error_px < calibration.mean_view_reprojection_error_px
+        or matrix[0, 0] <= 0
+        or matrix[1, 1] <= 0
+        or not np.allclose(matrix[2], [0.0, 0.0, 1.0], atol=1e-6)
+    ):
         raise ValueError("calibration JSON contains invalid camera parameters")
     return calibration
