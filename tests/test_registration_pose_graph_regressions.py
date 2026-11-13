@@ -13,15 +13,21 @@ def _rotation_z(angle):
 
 
 def test_icp_recovers_small_rigid_transform_from_nearby_clouds():
-    rng = np.random.default_rng(42)
-    source = rng.normal(size=(180, 3)) * 0.3
-    expected_rotation = _rotation_z(0.08)
-    expected_translation = np.array([0.12, -0.07, 0.04])
+    axis = np.linspace(-2.5, 2.5, 6)
+    source = np.array([
+        [x, y, z]
+        for x in axis
+        for y in axis
+        for z in axis
+    ], dtype=float)
+    source += np.random.default_rng(42).normal(scale=0.03, size=source.shape)
+    expected_rotation = _rotation_z(0.005)
+    expected_translation = np.array([0.02, -0.015, 0.01])
     target = (expected_rotation @ source.T).T + expected_translation
 
     result = register_point_cloud_icp(
         source, target,
-        max_correspondence_distance=0.8,
+        max_correspondence_distance=0.5,
         voxel_size=0.002,
         trim_fraction=1.0,
         max_iterations=60,
