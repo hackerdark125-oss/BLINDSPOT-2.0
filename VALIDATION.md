@@ -302,3 +302,16 @@ The CI workflow compiles the application, library, scripts, and tests, then runs
 The reconstruction regression tests cover deterministic small-transform ICP recovery, XYZRGB input handling, invalid ICP configuration, insufficient correspondences, anchored SE(3) loop-closure correction, and invalid pose-graph constraints. Tracking regression tests cover perfect matches, false positives, missed detections, identity switches, invalid benchmark inputs, latency metrics, and repeated-frame freeze diagnostics.
 
 A green CI run is required before merging software changes. It is not a substitute for the real-camera, measured-distance, or held-out benchmark checks below.
+
+
+## 6.18 Synthetic reconstruction profiling and score calibration diagnostics
+
+- [ ] Run `python scripts/profile_reconstruction.py --points 800 --poses 8 --output profile_report.json`.
+- [ ] Archive the JSON report with commit SHA, Python/NumPy versions, OS, CPU/RAM, and runtime limits.
+- [ ] Confirm ICP fitness/RMSE are sensible and the pose-graph final cost does not exceed its initial cost.
+- [ ] Compare timings only on the same hardware/software environment; synthetic timings are not real-camera performance guarantees.
+- [ ] When `psutil` is installed, review RSS deltas as well as Python-tracked peak allocations; native-library allocations may not be fully represented by tracemalloc.
+- [ ] Run the quality-label benchmark on a held-out human-labelled set and review expected/max score gaps and normalized Brier-like error.
+- [ ] Report each lighting/blur/exposure/scene condition separately and document the human scoring rubric.
+- [ ] Do not interpret score-agreement diagnostics as probability calibration or claim calibrated confidence.
+
