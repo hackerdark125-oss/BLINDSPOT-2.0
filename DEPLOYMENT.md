@@ -90,4 +90,4 @@ docker compose logs -f
 docker compose down
 ```
 
-The default Compose port is bound to localhost only. Change the host binding deliberately if remote access is required, and put authentication/firewall controls in front of any remote deployment.
+The supplied Compose file binds the dashboard to 127.0.0.1:8501 by default and restarts the container unless stopped. Keep this local binding unless you deliberately configure a secured remote deployment. Add authentication and firewall controls before exposing any dashboard beyond the local machine.
