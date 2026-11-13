@@ -54,7 +54,8 @@ Use representative drone footage at multiple heights, speeds, camera angles and 
 
 - [ ] Calibrate the actual stereo camera pair at its operating resolution and focus.
 - [ ] Keep the stereo baseline rigid and synchronise both camera feeds.
-- [ ] Generate a depth map using the existing stereo pipeline; confirm its distance unit is metres for the drone georeferencing workflow.
+- [ ] Upload a synchronized left/right aerial image pair and calibrated intrinsics/extrinsics JSON; confirm the app generates depth through the existing SGBM stereo pipeline.
+- [ ] Confirm the depth-unit conversion factor is correct (1 for metres, 0.001 for millimetres).
 - [ ] Compare depth against independently measured targets at multiple distances.
 - [ ] Confirm camera intrinsics match the depth map dimensions.
 - [ ] Measure camera-to-gimbal and gimbal-to-body extrinsics; derive the camera-to-ENU rotation for the recorded gimbal attitude.
@@ -64,7 +65,7 @@ Use representative drone footage at multiple heights, speeds, camera angles and 
 - [ ] Repeat with different altitude, pitch, roll, yaw, gimbal angles and flight directions.
 - [ ] Document GPS quality, telemetry delay, timestamp offset, stereo depth error and camera mounting offsets.
 
-The current dashboard exports a georeferenced point cloud from a supplied depth map. It does not yet perform complete multi-frame aerial photogrammetry, dense image-based mapping, automatic gimbal calibration, SLAM relocalisation or global map optimisation.
+The current dashboard exports a georeferenced point cloud from one precomputed depth map or one calibrated stereo image pair. It does not yet perform complete multi-frame aerial photogrammetry, dense multi-view map accumulation, automatic gimbal calibration, SLAM relocalisation or global map optimisation.
 
 ## 6. Performance and field evidence
 
