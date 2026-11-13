@@ -123,3 +123,57 @@ def test_legacy_calibration_json_defaults_view_error_metrics():
     loaded = load_calibration_json(json.dumps(data))
     assert loaded.mean_view_reprojection_error_px == 0.0
     assert loaded.max_view_reprojection_error_px == 0.0
+
+
+@pytest.mark.parametrize("field,value", [
+    ("image_width", 0),
+    ("board_columns", 1),
+    ("accepted_views", 2),
+    ("rejected_views", -1),
+    ("square_size", 0.0),
+    ("rms_reprojection_error", -0.1),
+    ("mean_view_reprojection_error_px", 2.0),
+])
+def test_load_calibration_json_rejects_invalid_metadata(field, value):
+    data = {
+        "camera_matrix": [[100, 0, 50], [0, 100, 50], [0, 0, 1]],
+        "distortion_coefficients": [0, 0, 0, 0],
+        "rms_reprojection_error": 0.2,
+        "image_width": 100,
+        "image_height": 100,
+        "board_columns": 9,
+        "board_rows": 6,
+        "square_size": 1.0,
+        "accepted_views": 5,
+        "rejected_views": 0,
+    }
+    data[field] = value
+    with pytest.raises(ValueError, match="invalid camera parameters"):
+        load_calibration_json(json.dumps(data))
+
+
+def test_load_calibration_json_rejects_nonpositive_focal_length():
+    data = {
+        "camera_matrix": [[0, 0, 50], [0, 100, 50], [0, 0, 1]],
+        "distortion_coefficients": [0, 0, 0, 0],
+        "rms_reprojection_error": 0.2,
+        "image_width": 100,
+        "image_height": 100,
+        "board_columns": 9,
+        "board_rows": 6,
+        "square_size": 1.0,
+        "accepted_views": 5,
+        "rejected_views": 0,
+    }
+    with pytest.raises(ValueError, match="invalid camera parameters"):
+        load_calibration_json(json.dumps(data))
+
+
+def test_load_calibration_json_rejects_non_object_document():
+    with pytest.raises(ValueError, match="invalid calibration JSON"):
+        load_calibration_json("[]")
+
+
+def test_calibration_rejects_boolean_square_size():
+    with pytest.raises(ValueError, match="square_size"):
+        calibrate_camera([np.zeros((100, 100), dtype=np.uint8)] * 3, square_size=True)
