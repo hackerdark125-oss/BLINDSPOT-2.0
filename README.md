@@ -538,3 +538,6 @@ python scripts/evaluate_pose_graph.py --poses optimized_poses.json --constraints
 ```
 
 The poses JSON is a list of objects with `rotation_matrix` and `translation_vector`. The constraints JSON is a list of objects with `i`, `j`, `rotation_matrix`, `translation_vector`, and optional `weight`. Each relative transform follows `X_j = R_ij X_i + t_ij`. The report includes per-edge rotation and translation residuals. Low residuals indicate consistency with the supplied constraints, not that those constraints are accurate; use independently verified metric measurements.
+
+
+The loop-closure module also exposes `verify_metric_loop_closure(source_points, target_points)`. Supply paired 3D points from stereo observations of the same features. Its RANSAC fit returns a metric rigid transform, inlier mask/ratio, RMSE, and an explicit verified flag based on configurable count and ratio gates. It verifies an existing candidate; it does not generate stereo feature correspondences or replace independent validation.
