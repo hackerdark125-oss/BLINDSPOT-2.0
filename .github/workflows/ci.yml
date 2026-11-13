@@ -16,16 +16,21 @@ concurrency:
 
 jobs:
   tests:
-    name: Python tests (3.11)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    name: Python tests (${{ matrix.python-version }} · ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11"]
     steps:
       - name: Check out source
         uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: |
             requirements.txt
