@@ -508,3 +508,36 @@ This composes existing pairwise stereo calibrations; it does not automatically
 capture or detect calibration targets, synchronize sensors, or globally
 optimise all noisy pairwise measurements. A connected graph is not proof of
 metric accuracy. Verify the rig against an independent measurement before use.
+
+
+## Reconstruction profiling and score calibration diagnostics
+
+Run a deterministic synthetic software profile from the repository root:
+
+```bash
+python scripts/profile_reconstruction.py --points 800 --poses 8 --output profile_report.json
+```
+
+The report includes wall-clock time, Python-tracked peak allocations, optional process RSS deltas (when `psutil` is installed), ICP fitness/RMSE, and pose-graph cost reduction. These synthetic timings are for regression/comparison only; they do not predict performance on a different camera, GPU, CPU, or point-cloud distribution.
+
+The human-labelled image-quality benchmark now also reports score-bin agreement gaps and a normalized Brier-like error:
+
+```bash
+python scripts/benchmark_quality.py --input quality_labels.csv --output quality_benchmark.json
+```
+
+These are diagnostics against normalized human ratings, not probabilistic calibration. Keep a held-out labelled set and report results separately by lighting, blur, exposure, and scene condition. Never describe the heuristic confidence score as a calibrated probability based on these metrics alone.
+
+
+### Quantitative pose-graph constraint verification
+
+After pose-graph optimisation, independently measure residuals for the supplied relative-pose constraints:
+
+```bash
+python scripts/evaluate_pose_graph.py --poses optimized_poses.json --constraints verified_constraints.json --output pose_graph_validation.json
+```
+
+The poses JSON is a list of objects with `rotation_matrix` and `translation_vector`. The constraints JSON is a list of objects with `i`, `j`, `rotation_matrix`, `translation_vector`, and optional `weight`. Each relative transform follows `X_j = R_ij X_i + t_ij`. The report includes per-edge rotation and translation residuals. Low residuals indicate consistency with the supplied constraints, not that those constraints are accurate; use independently verified metric measurements.
+
+
+The loop-closure module also exposes `verify_metric_loop_closure(source_points, target_points)`. Supply paired 3D points from stereo observations of the same features. Its RANSAC fit returns a metric rigid transform, inlier mask/ratio, RMSE, and an explicit verified flag based on configurable count and ratio gates. It verifies an existing candidate; it does not generate stereo feature correspondences or replace independent validation.

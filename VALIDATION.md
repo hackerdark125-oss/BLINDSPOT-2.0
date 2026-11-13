@@ -302,3 +302,37 @@ The CI workflow compiles the application, library, scripts, and tests, then runs
 The reconstruction regression tests cover deterministic small-transform ICP recovery, XYZRGB input handling, invalid ICP configuration, insufficient correspondences, anchored SE(3) loop-closure correction, and invalid pose-graph constraints. Tracking regression tests cover perfect matches, false positives, missed detections, identity switches, invalid benchmark inputs, latency metrics, and repeated-frame freeze diagnostics.
 
 A green CI run is required before merging software changes. It is not a substitute for the real-camera, measured-distance, or held-out benchmark checks below.
+
+
+## 6.18 Synthetic reconstruction profiling and score calibration diagnostics
+
+- [ ] Run `python scripts/profile_reconstruction.py --points 800 --poses 8 --output profile_report.json`.
+- [ ] Archive the JSON report with commit SHA, Python/NumPy versions, OS, CPU/RAM, and runtime limits.
+- [ ] Confirm ICP fitness/RMSE are sensible and the pose-graph final cost does not exceed its initial cost.
+- [ ] Compare timings only on the same hardware/software environment; synthetic timings are not real-camera performance guarantees.
+- [ ] When `psutil` is installed, review RSS deltas as well as Python-tracked peak allocations; native-library allocations may not be fully represented by tracemalloc.
+- [ ] Run the quality-label benchmark on a held-out human-labelled set and review expected/max score gaps and normalized Brier-like error.
+- [ ] Report each lighting/blur/exposure/scene condition separately and document the human scoring rubric.
+- [ ] Do not interpret score-agreement diagnostics as probability calibration or claim calibrated confidence.
+
+
+
+## 6.19 Quantitative pose-graph constraint verification
+
+- [ ] Export optimized camera-to-world poses and independently verified relative constraints in one coordinate frame and distance unit.
+- [ ] Run `python scripts/evaluate_pose_graph.py --poses optimized_poses.json --constraints verified_constraints.json --output pose_graph_validation.json`.
+- [ ] Archive per-edge rotation residuals, translation residuals, aggregate weighted RMSE, and source of each constraint.
+- [ ] Compare residuals before and after optimization; investigate any edge whose residual increases materially.
+- [ ] Verify loop-closure measurements independently. A small residual only proves consistency with the supplied measurement, not its correctness.
+
+
+## 6.20 Metric verification of retrieved loop-closure candidates
+
+- [ ] Obtain paired 3D points for the same features in the earlier and later stereo observations, using the same distance unit.
+- [ ] Call `blindspot.loop_closure.verify_metric_loop_closure` with a threshold appropriate to the depth noise and rig calibration.
+- [ ] Record inlier count/ratio, rigid transform, RMSE, threshold, and the original candidate frame indices.
+- [ ] Reject candidates that fail either the minimum inlier-count or inlier-ratio gate.
+- [ ] Compare the resulting metric transform with an independent surveyed pose or trusted odometry constraint before adding it to the pose graph.
+- [ ] Repeat with false-revisit pairs, moving objects, low-texture scenes, and depth outliers.
+
+The verifier estimates a rigid transform only from already paired 3D features. It does not discover image correspondences, guarantee that features are static, or prove that the input stereo calibration is correct.
