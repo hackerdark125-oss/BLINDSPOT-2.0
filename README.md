@@ -170,7 +170,7 @@ Each sampled frame is divided into a configurable grid. Every cell receives a he
 - [x] Manual translation-only and full SE(3) pose-graph correction using independently verified relative-pose constraints
 - [x] Multi-camera rig pose composition from pairwise stereo extrinsics, with cycle-residual diagnostics
 - [x] Optional ICP registration/refinement for overlapping multi-camera point clouds
-- [ ] Automatic metric loop-closure verification and relative-pose constraint generation
+- [x] Stereo-frame metric loop-closure candidate verification from ORB matches and aligned stereo depth, with RANSAC transform/inlier diagnostics (candidate verification is implemented; automatic constraint insertion/generation is not)
 - [ ] Ground-truth-validated arbitrary 3D coverage reconstruction and fully automatic calibration-target capture/synchronisation/global rig optimisation
 - [x] Quality-score agreement evaluator and per-cell human-label export tooling
 - [ ] Validated uncertainty model and representative benchmark dataset
