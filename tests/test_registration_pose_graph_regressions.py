@@ -103,9 +103,9 @@ def test_se3_loop_constraint_reduces_translation_closure_error_and_anchors_first
     closure = (0, 3, np.eye(3), np.array([-3.0, 0.0, 0.0]), 8.0)
     result = optimize_pose_graph_se3(poses, loop_closures=[closure])
 
-    initial_error = np.linalg.norm(poses[0][1] - poses[3][1] - [3.0, 0.0, 0.0])
+    initial_error = np.linalg.norm(poses[0][1] - poses[3][1] - [-3.0, 0.0, 0.0])
     final_error = np.linalg.norm(
-        result.poses[0][1] - result.poses[3][1] - [3.0, 0.0, 0.0]
+        result.poses[0][1] - result.poses[3][1] - [-3.0, 0.0, 0.0]
     )
     assert result.final_cost < result.initial_cost
     assert final_error < initial_error
