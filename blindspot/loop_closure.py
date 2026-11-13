@@ -190,12 +190,14 @@ def verify_metric_loop_closure(
     rng = np.random.default_rng(random_seed)
     best_mask = np.zeros(len(source), dtype=bool)
     best_rmse = np.inf
+    valid_models = 0
     for _ in range(max_iterations):
         sample = rng.choice(len(source), size=3, replace=False)
         try:
             rotation, translation = _fit_metric_rigid(source[sample], target[sample])
         except ValueError:
             continue
+        valid_models += 1
         errors = np.linalg.norm((rotation @ source.T).T + translation - target, axis=1)
         mask = errors <= threshold
         count = int(mask.sum())
@@ -205,6 +207,8 @@ def verify_metric_loop_closure(
             if count == len(source):
                 break
 
+    if valid_models == 0:
+        raise ValueError("all sampled 3D correspondences are degenerate or collinear")
     if int(best_mask.sum()) < 3:
         rotation, translation = np.eye(3), np.zeros(3)
         errors = np.full(len(source), np.inf)
