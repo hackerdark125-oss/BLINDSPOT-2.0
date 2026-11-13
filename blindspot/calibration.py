@@ -229,6 +229,8 @@ def load_calibration_json(content: str) -> CameraCalibration:
         or distortion.size < 4
         or not np.isfinite(matrix).all()
         or not np.isfinite(distortion).all()
+        or any(isinstance(value, bool) or not isinstance(value, (int, float))
+               for value in numeric_metrics)
         or not np.isfinite(numeric_metrics).all()
         or calibration.rms_reprojection_error < 0
         or calibration.square_size <= 0
