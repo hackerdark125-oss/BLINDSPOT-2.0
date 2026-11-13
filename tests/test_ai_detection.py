@@ -179,3 +179,28 @@ def test_process_live_stream_rejects_invalid_camera_source():
 
     with pytest.raises(ValueError, match="camera index or RTSP"):
         process_stream("not-a-camera-url", detector=object())
+
+
+def test_process_live_stream_stops_after_repeated_failed_reads(monkeypatch):
+    from blindspot.ai_detection import process_stream
+
+    class EmptyCapture:
+        released = False
+
+        def isOpened(self):
+            return True
+
+        def read(self):
+            return False, None
+
+        def release(self):
+            self.released = True
+
+    capture = EmptyCapture()
+    monkeypatch.setattr("blindspot.ai_detection.cv2.VideoCapture", lambda source: capture)
+    with pytest.raises(ValueError, match="No frames received"):
+        process_stream(
+            "0", duration_seconds=10, read_timeout_seconds=0.001,
+            detector=SimpleNamespace(reset_tracker=lambda: None),
+        )
+    assert capture.released is True
