@@ -49,13 +49,19 @@ def calibrate_stereo_cameras(
         raise ValueError("board_size must be a tuple of two integers >= 2")
     if any(isinstance(v, bool) or not isinstance(v, int) or v < 2 for v in board_size):
         raise ValueError("board_size must be a tuple of two integers >= 2")
+    if isinstance(square_size, (bool, np.bool_)) or not np.isscalar(square_size):
+        raise ValueError("square_size must be positive and finite")
+    try:
+        square_size = float(square_size)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("square_size must be positive and finite") from exc
     if not np.isfinite(square_size) or square_size <= 0:
         raise ValueError("square_size must be positive and finite")
     if isinstance(min_pairs, bool) or not isinstance(min_pairs, int) or min_pairs < 3:
         raise ValueError("min_pairs must be an integer of at least 3")
     if not translation_unit.strip():
         raise ValueError("translation_unit must not be empty")
-    if not images_a:
+    if len(images_a) == 0:
         raise ValueError("at least three synchronized image pairs are required")
 
     size_a = (intrinsics_a.image_width, intrinsics_a.image_height)
@@ -128,7 +134,16 @@ def calibrate_stereo_cameras(
     dist_a = np.asarray(intrinsics_a.distortion_coefficients, dtype=np.float64)
     matrix_b = np.asarray(intrinsics_b.camera_matrix, dtype=np.float64)
     dist_b = np.asarray(intrinsics_b.distortion_coefficients, dtype=np.float64)
-    if matrix_a.shape != (3, 3) or matrix_b.shape != (3, 3) or dist_a.size < 4 or dist_b.size < 4:
+    if (
+        matrix_a.shape != (3, 3) or matrix_b.shape != (3, 3)
+        or dist_a.ndim != 1 or dist_b.ndim != 1
+        or dist_a.size < 4 or dist_b.size < 4
+        or not all(np.isfinite(value).all() for value in (matrix_a, matrix_b, dist_a, dist_b))
+        or matrix_a[0, 0] <= 0 or matrix_a[1, 1] <= 0
+        or matrix_b[0, 0] <= 0 or matrix_b[1, 1] <= 0
+        or not np.allclose(matrix_a[2], [0.0, 0.0, 1.0], atol=1e-6)
+        or not np.allclose(matrix_b[2], [0.0, 0.0, 1.0], atol=1e-6)
+    ):
         raise ValueError("camera intrinsic parameters are invalid")
 
     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_MAX_ITER, 100, 1e-5)
@@ -174,19 +189,34 @@ def load_stereo_calibration_json(content: str) -> StereoCalibration:
     """Load and validate relative camera pose from JSON text."""
     try:
         data = json.loads(content)
+        if not isinstance(data, dict):
+            raise TypeError("stereo calibration document must be a JSON object")
         calibration = StereoCalibration(**data)
-        rotation = np.asarray(calibration.rotation_matrix, dtype=float)
-        translation = np.asarray(calibration.translation_vector, dtype=float)
-        essential = np.asarray(calibration.essential_matrix, dtype=float)
-        fundamental = np.asarray(calibration.fundamental_matrix, dtype=float)
-    except (TypeError, ValueError, KeyError, json.JSONDecodeError) as exc:
+        rotation = np.asarray(calibration.rotation_matrix, dtype=np.float64)
+        translation = np.asarray(calibration.translation_vector, dtype=np.float64)
+        essential = np.asarray(calibration.essential_matrix, dtype=np.float64)
+        fundamental = np.asarray(calibration.fundamental_matrix, dtype=np.float64)
+        rms = calibration.rms_reprojection_error
+    except (TypeError, ValueError, KeyError, json.JSONDecodeError, OverflowError) as exc:
         raise ValueError("invalid stereo calibration JSON") from exc
+
+    integer_fields = (
+        calibration.image_width, calibration.image_height,
+        calibration.accepted_pairs, calibration.rejected_pairs,
+    )
     if (
-        rotation.shape != (3, 3) or translation.size != 3
-        or essential.shape != (3, 3) or fundamental.shape != (3, 3)
-        or not all(np.isfinite(x).all() for x in (rotation, translation, essential, fundamental))
+        any(isinstance(value, bool) or not isinstance(value, int) for value in integer_fields)
         or calibration.image_width < 1 or calibration.image_height < 1
+        or calibration.accepted_pairs < 3 or calibration.rejected_pairs < 0
+        or isinstance(rms, bool) or not isinstance(rms, (int, float))
+        or not np.isfinite(rms) or rms < 0
+        or not isinstance(calibration.translation_unit, str)
         or not calibration.translation_unit.strip()
+        or rotation.shape != (3, 3) or translation.shape != (3,)
+        or essential.shape != (3, 3) or fundamental.shape != (3, 3)
+        or not all(np.isfinite(value).all() for value in (rotation, translation, essential, fundamental))
+        or not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-3)
+        or not np.isclose(np.linalg.det(rotation), 1.0, atol=1e-3)
         or float(np.linalg.norm(translation)) <= 1e-9
     ):
         raise ValueError("stereo calibration JSON contains invalid parameters")
@@ -236,8 +266,17 @@ def rectify_and_compute_depth(
     dist_b = np.asarray(intrinsics_b.distortion_coefficients, dtype=np.float64)
     rotation = np.asarray(stereo.rotation_matrix, dtype=np.float64)
     translation = np.asarray(stereo.translation_vector, dtype=np.float64).reshape(3, 1)
-    if matrix_a.shape != (3, 3) or matrix_b.shape != (3, 3) or rotation.shape != (3, 3):
-        raise ValueError("camera or stereo matrices have invalid dimensions")
+    if (
+        matrix_a.shape != (3, 3) or matrix_b.shape != (3, 3)
+        or rotation.shape != (3, 3)
+        or not all(np.isfinite(value).all() for value in (matrix_a, matrix_b, dist_a, dist_b, rotation, translation))
+        or matrix_a[0, 0] <= 0 or matrix_a[1, 1] <= 0
+        or matrix_b[0, 0] <= 0 or matrix_b[1, 1] <= 0
+        or dist_a.size < 4 or dist_b.size < 4
+        or not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-3)
+        or not np.isclose(np.linalg.det(rotation), 1.0, atol=1e-3)
+    ):
+        raise ValueError("camera or stereo matrices contain invalid parameters")
     if float(np.linalg.norm(translation)) <= 1e-9:
         raise ValueError("stereo camera baseline must be non-zero")
 
