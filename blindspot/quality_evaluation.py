@@ -105,4 +105,3 @@ def evaluate_quality_scores(
         },
         "interpretation": "Agreement with human labels; scores are not calibrated probabilities.",
     }
-}
