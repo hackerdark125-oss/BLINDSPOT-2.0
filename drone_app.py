@@ -15,6 +15,8 @@ from blindspot.drone import (
     georeference_point_cloud, interpolate_telemetry, parse_telemetry_csv,
 )
 from blindspot.reconstruction import depth_to_point_cloud, write_ply
+from blindspot.calibration import load_calibration_json
+from blindspot.stereo import load_stereo_calibration_json, rectify_and_compute_depth
 
 
 DRONE_CLASSES = [
@@ -198,23 +200,51 @@ def main() -> None:
                 st.error(f"Telemetry file could not be loaded: {exc}")
 
     with mapping_tab:
-        st.subheader("Georeferenced 3D point-cloud export")
-        st.write(
-            "Upload a depth map generated from a calibrated stereo drone-camera pair, "
-            "its camera intrinsics JSON, and flight telemetry. The output is a local ENU "
-            "point cloud in metres. A calibrated camera-to-ENU rotation is required."
+        st.subheader("Drone stereo depth and georeferenced 3D point-cloud export")
+        mapping_mode = st.radio(
+            "Depth source",
+            ["Precomputed depth map (.npy)", "Generate depth from calibrated stereo pair"],
+            horizontal=True,
         )
-        depth_upload = st.file_uploader("Depth map (.npy)", type=["npy"], key="depth_npy")
-        intrinsics_upload = st.file_uploader(
-            "Camera intrinsics JSON", type=["json"], key="mapping_intrinsics"
-        )
+        depth_upload = None
+        intrinsics_upload = None
+        left_upload = None
+        right_upload = None
+        intrinsics_b_upload = None
+        stereo_upload = None
+        if mapping_mode == "Precomputed depth map (.npy)":
+            depth_upload = st.file_uploader("Depth map (.npy)", type=["npy"], key="depth_npy")
+            intrinsics_upload = st.file_uploader(
+                "Camera A intrinsics JSON", type=["json"], key="mapping_intrinsics"
+            )
+        else:
+            left_upload = st.file_uploader(
+                "Synchronized left-camera image", type=["png", "jpg", "jpeg"], key="stereo_left"
+            )
+            right_upload = st.file_uploader(
+                "Synchronized right-camera image", type=["png", "jpg", "jpeg"], key="stereo_right"
+            )
+            intrinsics_upload = st.file_uploader(
+                "Left-camera intrinsics JSON", type=["json"], key="mapping_intrinsics_stereo_a"
+            )
+            intrinsics_b_upload = st.file_uploader(
+                "Right-camera intrinsics JSON", type=["json"], key="mapping_intrinsics_stereo_b"
+            )
+            stereo_upload = st.file_uploader(
+                "Stereo extrinsics JSON", type=["json"], key="mapping_stereo_extrinsics"
+            )
         mapping_telemetry_upload = st.file_uploader(
-            "Mapping flight telemetry CSV", type=["csv"], key="mapping_telemetry"
+            "Flight telemetry CSV", type=["csv"], key="mapping_telemetry"
         )
         rotation_text = st.text_area(
             "Calibrated camera-to-ENU rotation matrix (3×3 JSON)",
             value="[[1,0,0],[0,1,0],[0,0,1]]",
             help="Replace the example with the measured camera/gimbal-to-ENU rotation.",
+        )
+        depth_scale_to_m = st.number_input(
+            "Depth-unit scale to metres", min_value=0.000001, max_value=1000000.0,
+            value=1.0, format="%.6f",
+            help="Use 1 for metres, 0.001 for millimetres, or the appropriate conversion factor.",
         )
         stride = st.slider("Point-cloud sampling stride", 1, 12, 3)
         mapping_timestamp = None
@@ -231,25 +261,66 @@ def main() -> None:
                 )
             except (UnicodeDecodeError, ValueError) as exc:
                 st.error(f"Telemetry file could not be loaded: {exc}")
+
+        depth_inputs_ready = (
+            depth_upload is not None and intrinsics_upload is not None
+            if mapping_mode == "Precomputed depth map (.npy)"
+            else all([left_upload, right_upload, intrinsics_upload, intrinsics_b_upload, stereo_upload])
+        )
         if st.button(
             "Generate georeferenced PLY",
             type="primary",
-            disabled=not all([depth_upload, intrinsics_upload, mapping_telemetry_upload])
+            disabled=not depth_inputs_ready or mapping_telemetry_upload is None
                      or mapping_timestamp is None,
         ):
             try:
-                depth = np.load(depth_upload, allow_pickle=False)
-                intrinsics = json.loads(intrinsics_upload.getvalue().decode("utf-8"))
-                matrix_data = intrinsics.get("camera_matrix", intrinsics.get("matrix"))
-                if matrix_data is None:
-                    raise ValueError("intrinsics JSON must contain camera_matrix or matrix")
-                matrix = np.asarray(matrix_data, dtype=float)
+                intrinsics_a = load_calibration_json(
+                    intrinsics_upload.getvalue().decode("utf-8")
+                )
+                if mapping_mode == "Precomputed depth map (.npy)":
+                    depth_map = np.load(depth_upload, allow_pickle=False)
+                    matrix = np.asarray(intrinsics_a.camera_matrix, dtype=float)
+                    color_image = None
+                    valid_mask = None
+                else:
+                    intrinsics_b = load_calibration_json(
+                        intrinsics_b_upload.getvalue().decode("utf-8")
+                    )
+                    stereo = load_stereo_calibration_json(
+                        stereo_upload.getvalue().decode("utf-8")
+                    )
+                    image_a = cv2.imdecode(
+                        np.frombuffer(left_upload.getvalue(), dtype=np.uint8),
+                        cv2.IMREAD_COLOR,
+                    )
+                    image_b = cv2.imdecode(
+                        np.frombuffer(right_upload.getvalue(), dtype=np.uint8),
+                        cv2.IMREAD_COLOR,
+                    )
+                    if image_a is None or image_b is None:
+                        raise ValueError("could not decode one or both stereo images")
+                    depth_result = rectify_and_compute_depth(
+                        image_a, image_b, intrinsics_a, intrinsics_b, stereo
+                    )
+                    depth_map = depth_result.depth_map
+                    matrix = np.asarray(depth_result.rectified_camera_matrix, dtype=float)
+                    color_image = depth_result.rectified_a
+                    valid_mask = depth_result.valid_mask
+                    st.caption(
+                        f"Stereo depth generated · calibration unit: {stereo.translation_unit}. "
+                        "Set the depth-unit scale correctly to export metres."
+                    )
+
+                depth_metres = np.asarray(depth_map, dtype=np.float32) * float(depth_scale_to_m)
                 telemetry = parse_telemetry_csv(
                     mapping_telemetry_upload.getvalue().decode("utf-8-sig")
                 )
                 pose = interpolate_telemetry(telemetry, float(mapping_timestamp))
                 rotation = np.asarray(json.loads(rotation_text), dtype=float)
-                camera_cloud = depth_to_point_cloud(depth, matrix, stride=stride)
+                camera_cloud = depth_to_point_cloud(
+                    depth_metres, matrix, color_image=color_image,
+                    valid_mask=valid_mask, stride=stride,
+                )
                 origin = (
                     telemetry[0].latitude_deg,
                     telemetry[0].longitude_deg,
@@ -267,9 +338,10 @@ def main() -> None:
                     file_name="blindspot_aerial_map.ply", mime="application/octet-stream",
                 )
                 st.warning(
-                    "This is a georeferenced point-cloud export, not a complete photogrammetry "
-                    "or dense multi-view reconstruction pipeline. Accuracy depends on stereo "
-                    "depth, camera/gimbal extrinsics, telemetry timing and altitude datum."
+                    "This produces a georeferenced point cloud from one supplied depth map "
+                    "or one calibrated stereo image pair. It is not yet a complete multi-frame "
+                    "photogrammetry/SLAM map. Accuracy depends on stereo depth, camera/gimbal "
+                    "extrinsics, telemetry timing and altitude datum."
                 )
             except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
                 st.error(f"3D mapping failed: {exc}")
