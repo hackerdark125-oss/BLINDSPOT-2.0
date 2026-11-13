@@ -315,3 +315,12 @@ A green CI run is required before merging software changes. It is not a substitu
 - [ ] Report each lighting/blur/exposure/scene condition separately and document the human scoring rubric.
 - [ ] Do not interpret score-agreement diagnostics as probability calibration or claim calibrated confidence.
 
+
+
+## 6.19 Quantitative pose-graph constraint verification
+
+- [ ] Export optimized camera-to-world poses and independently verified relative constraints in one coordinate frame and distance unit.
+- [ ] Run `python scripts/evaluate_pose_graph.py --poses optimized_poses.json --constraints verified_constraints.json --output pose_graph_validation.json`.
+- [ ] Archive per-edge rotation residuals, translation residuals, aggregate weighted RMSE, and source of each constraint.
+- [ ] Compare residuals before and after optimization; investigate any edge whose residual increases materially.
+- [ ] Verify loop-closure measurements independently. A small residual only proves consistency with the supplied measurement, not its correctness.
