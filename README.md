@@ -16,7 +16,8 @@ BLINDSPOT AERIAL analyses recorded drone footage and supported live drone video 
 - Annotated frame review and timestamped detection CSV export
 - Flight telemetry CSV ingestion, validation, interpolation and GPS track visualisation
 - Local East/North/Up (ENU) conversion from GPS coordinates
-- Georeferenced XYZRGB PLY export from a supplied stereo depth map, camera intrinsics, telemetry and calibrated camera-to-ENU rotation
+- Stereo depth generation from a synchronized, calibrated drone-camera image pair using the existing OpenCV SGBM pipeline
+- Georeferenced XYZRGB PLY export from stereo depth or a supplied depth map, camera intrinsics, telemetry and calibrated camera-to-ENU rotation
 - Reuse of the existing stereo depth, visual odometry, point-cloud, trajectory evaluation and reconstruction modules
 
 ## Quick start (Windows)
@@ -59,11 +60,11 @@ Video-relative timestamps and telemetry timestamps must share the same time orig
 
 ## 3D mapping workflow
 
-The current mapping export accepts:
-- A depth map saved as a NumPy `.npy` array (depth values in metres)
-- Camera intrinsics JSON containing a 3×3 `camera_matrix` (or `matrix`)
+The current mapping workflow accepts either a precomputed NumPy `.npy` depth map, or a synchronized left/right image pair plus the two camera intrinsic JSON files and stereo extrinsics JSON. In stereo mode, the app calls the existing `rectify_and_compute_depth` SGBM pipeline. It also requires:
+- Camera intrinsics JSON containing the camera calibration parameters
 - Flight telemetry CSV
 - A calibrated camera-to-local-ENU rotation matrix
+- A depth-unit conversion factor to metres (use 1 for metres or 0.001 for millimetres)
 
 The first telemetry GPS position is used as the local ENU origin. The output PLY coordinates are metres relative to that origin. Camera mounting/gimbal extrinsics must be measured or calibrated and supplied; the UI's identity rotation is only a placeholder, not a valid default for a downward-facing drone camera.
 
