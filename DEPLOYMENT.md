@@ -91,3 +91,12 @@ docker compose down
 ```
 
 The supplied Compose file binds the dashboard to 127.0.0.1:8501 by default and restarts the container unless stopped. Keep this local binding unless you deliberately configure a secured remote deployment. Add authentication and firewall controls before exposing any dashboard beyond the local machine.
+
+
+## Live AI stream mode
+
+The optional **AI live webcam / RTSP** mode uses the same requirements-ai.txt installation as recorded-video YOLO tracking. It opens the source from the Streamlit server process and performs a bounded capture with configurable duration, frame stride, class filter, model size, confidence threshold, image size, and idle-read timeout.
+
+For Docker, the stream must be reachable from inside the container. A local USB webcam requires explicit device passthrough and permissions; the default Compose/Docker setup does not enable this. Do not publish private RTSP URLs or credentials in logs, screenshots, issue reports, or Git history.
+
+The idle timeout detects repeated failed reads but cannot guarantee interruption of an OpenCV backend call that blocks inside the driver or network stack. Validate the actual camera backend and network behavior on the deployment host before relying on timeout behavior.
