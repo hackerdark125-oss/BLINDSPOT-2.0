@@ -1,0 +1,4 @@
+timestamp_seconds,latitude_deg,longitude_deg,altitude_m,roll_deg,pitch_deg,yaw_deg
+0.0,30.000000,78.000000,120.0,0.0,0.0,0.0
+1.0,30.000010,78.000020,120.8,0.2,-1.0,1.5
+2.0,30.000025,78.000045,121.4,0.1,-1.5,3.0
