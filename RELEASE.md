@@ -119,3 +119,6 @@ Automatic metric loop-closure discovery and constraint generation remain outside
 
 
 The loop-closure module now includes a RANSAC metric verifier for already paired stereo 3D feature points. It reports transform, inlier statistics, and residual error with configurable acceptance gates. It still does not automatically create feature correspondences or independently survey the camera trajectory; metric constraints must be reviewed before pose-graph use.
+
+
+An end-to-end stereo-frame metric verifier now extracts ORB feature matches, back-projects valid paired depth samples, and robustly estimates a relative rigid transform with RANSAC. It is intended to verify a retrieved candidate; it does not guarantee correct calibration, synchronization, static-scene assumptions, or independent ground truth.
