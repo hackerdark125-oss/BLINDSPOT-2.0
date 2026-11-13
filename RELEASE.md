@@ -116,3 +116,6 @@ Before publishing a hosted instance:
 - Automated tests now include score-calibration diagnostic bounds, deterministic reconstruction profiling, and loop-closure residual reduction checks.
 
 Automatic metric loop-closure discovery and constraint generation remain outside the current implemented scope. Real-world validation remains a user-run release gate after software development is complete.
+
+
+The loop-closure module now includes a RANSAC metric verifier for already paired stereo 3D feature points. It reports transform, inlier statistics, and residual error with configurable acceptance gates. It still does not automatically create feature correspondences or independently survey the camera trajectory; metric constraints must be reviewed before pose-graph use.
